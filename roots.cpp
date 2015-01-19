@@ -37,8 +37,6 @@ extern "C" {
 
 static struct fstab *fstab = NULL;
 
-extern struct selabel_handle *sehandle;
-
 void load_volume_table()
 {
     int i;
@@ -233,7 +231,7 @@ int format_volume(const char* volume) {
         }
         int result;
         if (strcmp(v->fs_type, "ext4") == 0) {
-            result = make_ext4fs(v->blk_device, length, volume, sehandle);
+            result = make_ext4fs(v->blk_device, length, volume, NULL);
         } else {   /* Has to be f2fs because we checked earlier. */
             if (v->key_loc != NULL && strcmp(v->key_loc, "footer") == 0 && length < 0) {
                 LOGE("format_volume: crypt footer + negative length (%zd) not supported on %s\n", length, v->fs_type);

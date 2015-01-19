@@ -145,19 +145,7 @@ dirCreateHierarchy(const char *path, int mode,
         } else if (ds == DMISSING) {
             int err;
 
-            char *secontext = NULL;
-
-            if (sehnd) {
-                selabel_lookup(sehnd, &secontext, cpath, mode);
-                setfscreatecon(secontext);
-            }
-
             err = mkdir(cpath, mode);
-
-            if (secontext) {
-                freecon(secontext);
-                setfscreatecon(NULL);
-            }
 
             if (err != 0) {
                 free(cpath);
