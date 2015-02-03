@@ -27,7 +27,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
-#include <selinux/selinux.h>
 #include <ftw.h>
 #include <sys/capability.h>
 #include <sys/xattr.h>
@@ -764,11 +763,8 @@ static int ApplyParsedPerms(
     int bad = 0;
 
     if (parsed.has_selabel) {
-        if (lsetfilecon(filename, parsed.selabel) != 0) {
-            uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s failed: %s\n",
-                    filename, parsed.selabel, strerror(errno));
-            bad++;
-        }
+        uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s skipped\n",
+                filename, parsed.selabel);
     }
 
     /* ignore symlinks */
