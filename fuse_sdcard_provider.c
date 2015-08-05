@@ -21,6 +21,7 @@
 #include <pthread.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 #include <fcntl.h>
 
@@ -64,6 +65,7 @@ struct token {
     pthread_t th;
     const char* path;
     int result;
+    pid_t pid;
 };
 
 static void* run_sdcard_fuse(void* cookie) {
@@ -103,26 +105,32 @@ void* start_sdcard_fuse(const char* path) {
     struct token* t = malloc(sizeof(struct token));
 
     t->path = path;
-    pthread_create(&(t->th), NULL, run_sdcard_fuse, t);
-
-    struct stat st;
-    int i;
-    for (i = 0; i < SDCARD_INSTALL_TIMEOUT; ++i) {
-        if (stat(FUSE_SIDELOAD_HOST_PATHNAME, &st) != 0) {
-            if (errno == ENOENT && i < SDCARD_INSTALL_TIMEOUT-1) {
-                sleep(1);
-                continue;
-            } else {
-                return NULL;
+    t->pid = fork();
+    if (t->pid == 0) {
+        run_sdcard_fuse(t); // Let child process to execute
+        // Because token result is not used by parent process, it is safe to exit
+        // from child process.
+        exit(0);
+    } else {
+        struct stat st;
+        int i;
+        for (i = 0; i < SDCARD_INSTALL_TIMEOUT; ++i) {
+            if (stat(FUSE_SIDELOAD_HOST_PATHNAME, &st) != 0) {
+                if (errno == ENOENT && i < SDCARD_INSTALL_TIMEOUT-1) {
+                    sleep(1);
+                    continue;
+                } else {
+                    return NULL;
+                }
             }
         }
+
+        // The installation process expects to find the sdcard unmounted.
+        // Unmount it with MNT_DETACH so that our open file continues to
+        // work but new references see it as unmounted.
+        umount2("/sdcard", MNT_DETACH);
     }
-
-    // The installation process expects to find the sdcard unmounted.
-    // Unmount it with MNT_DETACH so that our open file continues to
-    // work but new references see it as unmounted.
-    umount2("/sdcard", MNT_DETACH);
-
+    // only parent process can return
     return t;
 }
 
@@ -135,6 +143,7 @@ void finish_sdcard_fuse(void* cookie) {
     struct stat st;
     stat(FUSE_SIDELOAD_HOST_EXIT_PATHNAME, &st);
 
-    pthread_join(t->th, NULL);
+    int status;
+    waitpid(-1, &status, 0); // wait for any chid process to exit
     free(t);
 }
