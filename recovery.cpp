@@ -30,10 +30,10 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-
+#include <sys/mount.h>
 #include <base/file.h>
 #include <base/stringprintf.h>
-
+#include <fs_mgr.h>
 #include "bootloader.h"
 #include "common.h"
 #include "cutils/properties.h"
@@ -51,7 +51,7 @@
 #include "fuse_sdcard_provider.h"
 
 struct selabel_handle *sehandle;
-
+#define UFS_DEV_SDCARD_BLK_PATH "/dev/block/mmcblk0p1"
 static const struct option OPTIONS[] = {
   { "send_intent", required_argument, NULL, 'i' },
   { "update_package", required_argument, NULL, 'u' },
@@ -789,14 +789,61 @@ static void choose_recovery_file(Device* device) {
     }
 }
 
+static int is_ufs_dev()
+{
+    char bootdevice[PROPERTY_VALUE_MAX] = {0};
+    property_get("ro.boot.bootdevice", bootdevice, "N/A");
+    ui->Print("ro.boot.bootdevice is: %s\n",bootdevice);
+    if (strlen(bootdevice) < strlen(".ufshc") + 1)
+        return 0;
+    return (!strncmp(&bootdevice[strlen(bootdevice) - strlen(".ufshc")],
+                            ".ufshc",
+                            sizeof(".ufshc")));
+}
+
+static int do_sdcard_mount_for_ufs()
+{
+    int rc = 0;
+    ui->Print("Update via sdcard on UFS dev.Mounting card\n");
+    Volume *v = volume_for_path("/sdcard");
+    if (v == NULL) {
+            ui->Print("Unknown volume for /sdcard.Check fstab\n");
+            goto error;
+    }
+    if (strncmp(v->fs_type, "vfat", sizeof("vfat"))) {
+            ui->Print("Unsupported format on the sdcard: %s\n",
+                            v->fs_type);
+            goto error;
+    }
+    rc = mount(UFS_DEV_SDCARD_BLK_PATH,
+                    v->mount_point,
+                    v->fs_type,
+                    v->flags,
+                    v->fs_options);
+    if (rc) {
+            ui->Print("Failed to mount sdcard : %s\n",
+                            strerror(errno));
+            goto error;
+    }
+    ui->Print("Done mounting sdcard\n");
+    return 0;
+error:
+    return -1;
+}
+
 static int apply_from_sdcard(Device* device, bool* wipe_cache) {
     modified_flash = true;
-
-    if (ensure_path_mounted(SDCARD_ROOT) != 0) {
-        ui->Print("\n-- Couldn't mount %s.\n", SDCARD_ROOT);
-        return INSTALL_ERROR;
+    if (is_ufs_dev()) {
+            if (do_sdcard_mount_for_ufs() != 0) {
+                    ui->Print("\nFailed to mount sdcard\n");
+                    return INSTALL_ERROR;
+            }
+    } else  {
+            if (ensure_path_mounted(SDCARD_ROOT) != 0) {
+                    ui->Print("\n-- Couldn't mount %s.\n", SDCARD_ROOT);
+                    return INSTALL_ERROR;
+            }
     }
-
     char* path = browse_directory(SDCARD_ROOT, device);
     if (path == NULL) {
         ui->Print("\n-- No package file selected.\n");
@@ -984,7 +1031,8 @@ main(int argc, char **argv) {
     bool sideload_auto_reboot = false;
     bool just_exit = false;
     bool shutdown_after = false;
-
+    int status = INSTALL_SUCCESS;
+    bool mount_required = true;
     int arg;
     while ((arg = getopt_long(argc, argv, "", OPTIONS, NULL)) != -1) {
         switch (arg) {
@@ -1035,24 +1083,21 @@ main(int argc, char **argv) {
     ui->SetBackground(RecoveryUI::NONE);
     if (show_text) ui->ShowText(true);
 
+
+
     struct selinux_opt seopts[] = {
       { SELABEL_OPT_PATH, "/file_contexts" }
     };
-
     sehandle = selabel_open(SELABEL_CTX_FILE, seopts, 1);
-
     if (!sehandle) {
         ui->Print("Warning: No file_contexts\n");
     }
-
     device->StartRecovery();
-
     printf("Command:");
     for (arg = 0; arg < argc; arg++) {
         printf(" \"%s\"", argv[arg]);
     }
     printf("\n");
-
     if (update_package) {
         // For backwards compatibility on the cache partition only, if
         // we're given an old 'root' path "CACHE:foo", change it to
@@ -1066,18 +1111,30 @@ main(int argc, char **argv) {
                    update_package, modified_path);
             update_package = modified_path;
         }
+        if (!strncmp("/sdcard", update_package, 7)) {
+            //If this is a UFS device lets mount the sdcard ourselves.Depending
+            //on if the device is UFS or EMMC based the path to the sdcard
+            //device changes so we cannot rely on the block dev path from
+            //recovery.fstab
+            if (is_ufs_dev()) {
+                    if(do_sdcard_mount_for_ufs() != 0) {
+                            status = INSTALL_ERROR;
+                            goto error;
+                    }
+                    mount_required = false;
+            } else {
+                    ui->Print("Update via sdcard on EMMC dev. Using path from fstab\n");
+            }
+        }
     }
     printf("\n");
-
     property_list(print_property, NULL);
     printf("\n");
 
     ui->Print("Supported API: %d\n", RECOVERY_API_VERSION);
 
-    int status = INSTALL_SUCCESS;
-
     if (update_package != NULL) {
-        status = install_package(update_package, &should_wipe_cache, TEMPORARY_INSTALL_FILE, true);
+        status = install_package(update_package, &should_wipe_cache, TEMPORARY_INSTALL_FILE, mount_required);
         if (status == INSTALL_SUCCESS && should_wipe_cache) {
             wipe_cache(false, device);
         }
@@ -1130,7 +1187,8 @@ main(int argc, char **argv) {
             ui->ShowText(true);
         }
     }
-
+error:
+    if (is_ro_debuggable()) ui->ShowText(true);
     if (!sideload_auto_reboot && (status == INSTALL_ERROR || status == INSTALL_CORRUPT)) {
         copy_logs();
         ui->SetBackground(RecoveryUI::ERROR);
