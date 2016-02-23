@@ -844,6 +844,11 @@ static int apply_from_sdcard(Device* device, bool* wipe_cache) {
                     return INSTALL_ERROR;
             }
     }
+    if (ensure_path_mounted("/cache") != 0 ||
+        ensure_path_mounted("/tmp") != 0) {
+        ui->Print("\nFailed to mount cache/tmp partition\n");
+        return INSTALL_ERROR;
+    }
     char* path = browse_directory(SDCARD_ROOT, device);
     if (path == NULL) {
         ui->Print("\n-- No package file selected.\n");
@@ -1118,6 +1123,11 @@ main(int argc, char **argv) {
             //recovery.fstab
             if (is_ufs_dev()) {
                     if(do_sdcard_mount_for_ufs() != 0) {
+                            status = INSTALL_ERROR;
+                            goto error;
+                    }
+                    if (ensure_path_mounted("/cache") != 0 || ensure_path_mounted("/tmp") != 0) {
+                            ui->Print("\nFailed to mount tmp/cache partition\n");
                             status = INSTALL_ERROR;
                             goto error;
                     }
