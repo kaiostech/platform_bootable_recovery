@@ -969,8 +969,20 @@ bool mzExtractRecursive(const ZipArchive *pArchive,
                      pEntry->fileNameLen, pEntry->fileName);
             }
 
+            char *secontext = NULL;
+
+            if (sehnd) {
+                selabel_lookup(sehnd, &secontext, targetFile, UNZIP_FILEMODE);
+                setfscreatecon(secontext);
+            }
+
             int fd = open(targetFile, O_CREAT|O_WRONLY|O_TRUNC|O_SYNC,
                 UNZIP_FILEMODE);
+
+            if (secontext) {
+                freecon(secontext);
+                setfscreatecon(NULL);
+            }
 
             if (fd < 0) {
                 LOGE("Can't create target file \"%s\": %s\n",

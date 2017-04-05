@@ -75,6 +75,7 @@ LOCAL_STATIC_LIBRARIES := \
     libbase \
     libcutils \
     liblog \
+    libselinux \
     libstdc++ \
     libm \
     libc

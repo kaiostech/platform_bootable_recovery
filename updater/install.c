@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <time.h>
+#include <selinux/selinux.h>
 #include <ftw.h>
 #include <sys/capability.h>
 #include <sys/xattr.h>
@@ -132,7 +133,19 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
         goto done;
     }
 
+    char *secontext = NULL;
+
+    if (sehandle) {
+        selabel_lookup(sehandle, &secontext, mount_point, 0755);
+        setfscreatecon(secontext);
+    }
+
     mkdir(mount_point, 0755);
+
+    if (secontext) {
+        freecon(secontext);
+        setfscreatecon(NULL);
+    }
 
     if (strcmp(partition_type, "MTD") == 0) {
         mtd_scan_partitions();
@@ -321,7 +334,7 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
         result = location;
 #ifdef USE_EXT4
     } else if (strcmp(fs_type, "ext4") == 0) {
-        int status = make_ext4fs(location, atoll(fs_size), mount_point, NULL);
+        int status = make_ext4fs(location, atoll(fs_size), mount_point, sehandle);
         if (status != 0) {
             printf("%s: make_ext4fs failed (%d) on %s",
                     name, status, location);
@@ -484,7 +497,7 @@ Value* PackageExtractDirFn(const char* name, State* state,
 
     bool success = mzExtractRecursive(za, zip_path, dest_path,
                                       &timestamp,
-                                      NULL, NULL, NULL);
+                                      NULL, NULL, sehandle);
     free(zip_path);
     free(dest_path);
     return StringValue(strdup(success ? "t" : ""));
@@ -763,8 +776,11 @@ static int ApplyParsedPerms(
     int bad = 0;
 
     if (parsed.has_selabel) {
-        uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s skipped\n",
-                filename, parsed.selabel);
+        if (lsetfilecon(filename, parsed.selabel) != 0) {
+            uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s failed: %s\n",
+                    filename, parsed.selabel, strerror(errno));
+            bad++;
+        }
     }
 
     /* ignore symlinks */
