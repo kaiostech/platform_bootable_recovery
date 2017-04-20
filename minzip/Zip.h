@@ -18,7 +18,8 @@
 extern "C" {
 #endif
 
-struct selabel_handle;
+#include <selinux/selinux.h>
+#include <selinux/label.h>
 
 /*
  * One entry in the Zip archive.  Treat this as opaque -- use accessors below.
