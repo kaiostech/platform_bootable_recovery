@@ -262,6 +262,105 @@ static int exec_cmd(const char* path, char* const argv[]) {
     return WEXITSTATUS(status);
 }
 
+//add by zcl for fsg erase
+
+#define PATH_SYS_LINKED             "/sys/block/mmcblk0/"
+#define RB_MAX_PATH                 1024
+#define SECTOR_SIZE                 0x200 //512
+
+
+int get_Partition_info(char* ptname, unsigned long* byte_size) {
+    char path_byname[RB_MAX_PATH] = {'\0'};
+    char linkedpath[RB_MAX_PATH] = {'\0'};
+    char sys_path_byte_size[RB_MAX_PATH] = PATH_SYS_LINKED;
+    char pbBuffer_size[40] = {0};
+    int ret = -1;
+
+    strcpy(path_byname,ptname);
+    //the linkedpath will be (/dev/block/mmcblk0p*)
+    ret = readlink(path_byname, linkedpath, RB_MAX_PATH);
+    if (ret == -1) {
+        fprintf(stderr, "get_Partition_info error readlink %s errno = %d\n", sys_path_byte_size, errno);
+        goto GET_SIZE_DONE;
+    }
+    strcat(sys_path_byte_size, linkedpath+11);
+    strcat(sys_path_byte_size, "/size");
+
+    //open /sys/block/mmcblk0/mmcblk0p*/size
+    int fd = open(sys_path_byte_size, O_RDONLY);
+    if ( -1 == fd) {
+        fprintf(stderr, "get_Partition_info error open %s errno = %d\n", sys_path_byte_size, errno);
+        goto GET_SIZE_DONE;
+    }
+
+    if (-1 == read(fd, pbBuffer_size, 30)) {
+        fprintf(stderr, "get_Partition_info error read %s errno = %d\n", sys_path_byte_size, errno);
+        goto GET_SIZE_DONE;
+    }
+
+    *byte_size = strtoul(pbBuffer_size,NULL,10) * SECTOR_SIZE;
+
+    fprintf(stdout, "get_Partition_info partition : %s byte_size : %x\n",
+                ptname,  *byte_size);
+    ret = 0;
+
+GET_SIZE_DONE:
+    if (fd != -1)
+        close(fd);
+    return ret;
+
+}
+
+int mmc_raw_erase (char* partition, unsigned long byte_size ) {
+    char data[SECTOR_SIZE];
+    memset(data, 0, sizeof(data));
+    int fd;
+    int ret = -1;
+    unsigned long soFar = 0;
+
+    fprintf(stdout, "mmc_raw_erase partition : %s  byte_size : %x\n",
+                partition, byte_size);
+
+    fd = open (partition, O_WRONLY);
+    if (-1 == fd){
+        fprintf(stderr, " mmc_raw_erase error open %s errno = %d\n", partition, errno);
+        goto ERROR;
+    }
+
+    while(soFar < byte_size){
+        int rest_size = 0;
+        rest_size = byte_size-soFar;
+
+        if(rest_size > SECTOR_SIZE) {
+
+            if ((write(fd, data, SECTOR_SIZE)) == SECTOR_SIZE){
+               soFar += SECTOR_SIZE;
+            }else{
+                fprintf(stderr, "error write %s errno = %d\n", partition, errno);
+                goto ERROR;
+            }
+        } else {
+            if ((write(fd, data, rest_size)) == rest_size){
+               soFar += rest_size;
+            }else{
+                fprintf(stderr, "error2 write %s errno = %d\n", partition, errno);
+                goto ERROR;
+            }
+        }
+    }
+
+    fprintf(stdout, "mmc_raw_erase done!\n");
+
+    fsync(fd);
+    ret = 0;
+
+ERROR:
+    if (fd != -1)
+        close(fd);
+    return ret;
+}
+
+//end by zcl for fsg erase
 
 // format(fs_type, partition_type, location, fs_size, mount_point)
 //
@@ -361,6 +460,23 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
         }
         result = location;
 #endif
+    } else if (strcmp(fs_type, "emmc") == 0) {
+        unsigned long mmc_size = 0;
+        int status = get_Partition_info(location, &mmc_size);
+        if (status != 0) {
+            fprintf(stderr, "%s: get_Partition_info failed (%d) on %s",
+                    name, status, location);
+            result = strdup("");
+            goto done;
+        }
+        status = mmc_raw_erase(location, mmc_size);
+        if (status != 0) {
+            fprintf(stderr, "%s: mmc_raw_erase failed (%d) on %s",
+                    name, status, location);
+            result = strdup("");
+            goto done;
+        }
+        result = location;
     } else {
         printf("%s: unsupported fs_type \"%s\" partition_type \"%s\"",
                 name, fs_type, partition_type);

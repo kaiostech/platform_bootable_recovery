@@ -167,6 +167,6 @@ int MakeFreeSpaceOnCache(size_t bytes_needed) {
     free(names[i]);
   }
   free(names);
-
+  sync();
   return (free_now >= bytes_needed) ? 0 : -1;
 }

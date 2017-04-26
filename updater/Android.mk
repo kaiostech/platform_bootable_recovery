@@ -15,7 +15,7 @@ include $(CLEAR_VARS)
 # Build only in eng, so we don't end up with a copy of this in /system
 # on user builds.  (TODO: find a better way to build device binaries
 # needed only for OTA packages.)
-LOCAL_MODULE_TAGS := eng
+LOCAL_MODULE_TAGS := optional
 
 LOCAL_SRC_FILES := $(updater_src_files)
 

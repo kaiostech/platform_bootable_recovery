@@ -49,6 +49,7 @@
 #include "adb.h"
 #include "fuse_sideload.h"
 #include "fuse_sdcard_provider.h"
+#include "private/android_filesystem_config.h"
 
 struct selabel_handle *sehandle;
 #define UFS_DEV_SDCARD_BLK_PATH "/dev/block/mmcblk0p1"
@@ -80,6 +81,7 @@ static const char *TEMPORARY_LOG_FILE = "/tmp/recovery.log";
 static const char *TEMPORARY_INSTALL_FILE = "/tmp/last_install";
 static const char *LAST_KMSG_FILE = "/cache/recovery/last_kmsg";
 static const char *LAST_LOG_FILE = "/cache/recovery/last_log";
+static const char *JRD_FOTA_RESULT_FILE = "/data/fota/result.txt";
 static const int KEEP_LOG_COUNT = 10;
 
 RecoveryUI* ui = NULL;
@@ -985,6 +987,82 @@ load_locale_from_cache() {
         check_and_fclose(fp, LOCALE_FILE);
     }
 }
+static void fota_reset_status(void) {
+    if(unlink(JRD_FOTA_RESULT_FILE)){
+        LOGE("erasing fota.status failed errno=%d\n",errno);
+    }
+}
+static void write_file(const char *file_name, int reason, char *result)
+{
+    char dir_name[256];
+    char buf[256];
+
+    ensure_path_mounted("/data");
+
+    strcpy(dir_name, file_name);
+    char *p = strrchr(dir_name, '/');
+    *p = 0;
+
+    fprintf(stdout, "dir_name = %s\n", dir_name);
+    mode_t proc_mask = umask(0);
+
+    if (opendir(dir_name) == NULL)  {
+        fprintf(stdout, "dir_name = '%s' does not exist, create it.\n", dir_name);
+        if (mkdir(dir_name, 0775))  {
+            fprintf(stdout, "can not create '%s' : %s\n", dir_name, strerror(errno));
+            umask(proc_mask);
+            return;
+        }
+        chown(dir_name, AID_SYSTEM, AID_SYSTEM);
+    }
+
+    int result_fd = open(file_name, O_RDWR | O_CREAT | O_TRUNC, 0666);
+    fchown(result_fd, AID_SYSTEM, AID_SYSTEM);
+
+    if (result_fd < 0) {
+        fprintf(stdout, "cannot open '%s' for output : %s\n", file_name, strerror(errno));
+        umask(proc_mask);
+        return;
+    }
+
+    sprintf(buf,"%s:%d",result,reason);
+
+    write(result_fd, buf, strlen(buf));
+    close(result_fd);
+    umask(proc_mask);
+}
+
+static char *install_result = NULL;
+static inline void set_install_result(char *s)
+{
+    install_result = s;
+}
+
+static void write_result(int reason)
+{
+    int ret = 0;
+    switch (reason) {
+    case INSTALL_SUCCESS:
+        set_install_result("INSTALL SUCCESS");
+        ret = 200;
+        break;
+    case INSTALL_ERROR:
+        set_install_result("Update.zip is not correct");
+        ret = 410;
+        break;
+    case INSTALL_CORRUPT:
+        set_install_result("The update.zip is corrupted");
+        ret = 402;
+        break;
+    default:
+        set_install_result("Update.zip is not correct");
+        ret = 410;
+    }
+
+    fprintf(stdout, "package install result:%s\n", install_result);
+
+    write_file(JRD_FOTA_RESULT_FILE, ret, install_result);
+}
 
 static RecoveryUI* gCurrentUI = NULL;
 
@@ -1144,6 +1222,7 @@ main(int argc, char **argv) {
     ui->Print("Supported API: %d\n", RECOVERY_API_VERSION);
 
     if (update_package != NULL) {
+        fota_reset_status();
         status = install_package(update_package, &should_wipe_cache, TEMPORARY_INSTALL_FILE, mount_required);
         if (status == INSTALL_SUCCESS && should_wipe_cache) {
             wipe_cache(false, device);
@@ -1158,6 +1237,7 @@ main(int argc, char **argv) {
                 ui->ShowText(true);
             }
         }
+        write_result(status);
     } else if (should_wipe_data) {
         if (!wipe_data(false, device)) {
             status = INSTALL_ERROR;

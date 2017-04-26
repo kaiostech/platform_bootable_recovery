@@ -1037,6 +1037,7 @@ static int GenerateTarget(FileContents* source_file,
                    target_filename, strerror(errno));
             return 1;
         }
+        sync();
     }
 
     // If this run of applypatch created the copy, and we're here, we

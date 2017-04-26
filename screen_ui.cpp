@@ -249,7 +249,7 @@ void ScreenRecoveryUI::draw_screen_locked() {
             property_get("ro.bootimage.build.fingerprint", recovery_fingerprint, "");
 
             SetColor(INFO);
-            DrawTextLine(&y, "Android Recovery", true);
+            DrawTextLine(&y, "KaiOS Recovery", true);
             for (auto& chunk : android::base::Split(recovery_fingerprint, ":")) {
                 DrawTextLine(&y, chunk.c_str(), false);
             }
