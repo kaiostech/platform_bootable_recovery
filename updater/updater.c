@@ -137,6 +137,7 @@ int main(int argc, char** argv) {
     state.cookie = &updater_info;
     state.script = script;
     state.errmsg = NULL;
+    unsigned int error_code = 0;
 
     char* result = Evaluate(&state, root);
     if (result == NULL) {
@@ -147,10 +148,18 @@ int main(int argc, char** argv) {
             printf("script aborted: %s\n", state.errmsg);
             char* line = strtok(state.errmsg, "\n");
             while (line) {
+                if (*line == 'E') {/*error message begin with "EXXXX...."*/
+                    if (sscanf(line, "E%u: ", &error_code) != 1) {
+                         printf("Failed to parse error code: [%s]\n", line);
+                    }
+                }
                 fprintf(cmd_pipe, "ui_print %s\n", line);
                 line = strtok(NULL, "\n");
             }
             fprintf(cmd_pipe, "ui_print\n");
+        }
+        if (error_code != 0) {
+            fprintf(cmd_pipe, "log error: %u\n", error_code);
         }
         free(state.errmsg);
         return 7;

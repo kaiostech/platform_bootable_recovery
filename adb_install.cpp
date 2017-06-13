@@ -113,7 +113,7 @@ apply_from_adb(RecoveryUI* ui_, bool* wipe_cache, const char* install_file) {
                 break;
             }
         }
-        result = install_package(FUSE_SIDELOAD_HOST_PATHNAME, wipe_cache, install_file, true);
+        result = install_package(FUSE_SIDELOAD_HOST_PATHNAME, wipe_cache, install_file, true, NULL);
         break;
     }
 

@@ -863,7 +863,7 @@ static int apply_from_sdcard(Device* device, bool* wipe_cache) {
     void* token = start_sdcard_fuse(path);
 
     int status = install_package(FUSE_SIDELOAD_HOST_PATHNAME, wipe_cache,
-                                 TEMPORARY_INSTALL_FILE, false);
+                                 TEMPORARY_INSTALL_FILE, false,NULL);
 
     finish_sdcard_fuse(token);
     ensure_path_unmounted(SDCARD_ROOT);
@@ -1038,30 +1038,24 @@ static inline void set_install_result(char *s)
 {
     install_result = s;
 }
-
-static void write_result(int reason)
+#define INSTALL_SUCCESS_CODE 999
+#define INSTALL_FAILURE_CODE 1000
+static void write_result(int reason, unsigned int code)
 {
-    int ret = 0;
-    switch (reason) {
-    case INSTALL_SUCCESS:
-        set_install_result("INSTALL SUCCESS");
-        ret = 200;
-        break;
-    case INSTALL_ERROR:
-        set_install_result("Update.zip is not correct");
-        ret = 410;
-        break;
-    case INSTALL_CORRUPT:
-        set_install_result("The update.zip is corrupted");
-        ret = 402;
-        break;
-    default:
-        set_install_result("Update.zip is not correct");
-        ret = 410;
+    unsigned int ret = 0;
+    if (reason == INSTALL_SUCCESS) {
+      ret = INSTALL_SUCCESS_CODE;
+      set_install_result("INSTALL SUCCESS");
+    } else {
+      if (code != 0) {
+        ret = code;
+      } else {
+        ret = INSTALL_FAILURE_CODE;
+      }
+      set_install_result("INSTALL Failed");
     }
 
     fprintf(stdout, "package install result:%s\n", install_result);
-
     write_file(JRD_FOTA_RESULT_FILE, ret, install_result);
 }
 
@@ -1118,6 +1112,7 @@ main(int argc, char **argv) {
     int status = INSTALL_SUCCESS;
     bool mount_required = true;
     int arg;
+    unsigned int err_no = 0;
     while ((arg = getopt_long(argc, argv, "", OPTIONS, NULL)) != -1) {
         switch (arg) {
         case 'i': send_intent = optarg; break;
@@ -1224,7 +1219,7 @@ main(int argc, char **argv) {
 
     if (update_package != NULL) {
         fota_reset_status();
-        status = install_package(update_package, &should_wipe_cache, TEMPORARY_INSTALL_FILE, mount_required);
+        status = install_package(update_package, &should_wipe_cache, TEMPORARY_INSTALL_FILE, mount_required, &err_no);
         if (status == INSTALL_SUCCESS && should_wipe_cache) {
             wipe_cache(false, device);
         }
@@ -1238,7 +1233,7 @@ main(int argc, char **argv) {
                 ui->ShowText(true);
             }
         }
-        write_result(status);
+        write_result(status, err_no);
     } else if (should_wipe_data) {
         if (!wipe_data(false, device)) {
             status = INSTALL_ERROR;

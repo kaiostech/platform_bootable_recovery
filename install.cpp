@@ -41,6 +41,25 @@ extern RecoveryUI* ui;
 #define ASSUMED_UPDATE_BINARY_NAME  "META-INF/com/google/android/update-binary"
 #define PUBLIC_KEYS_FILE "/res/keys"
 
+#define RECOVERY_FILEMOUNT_FAILURE   3013
+#define RECOVERY_FILEMAP_FAILURE     3014
+#define RECOVERY_KEYLOADED_FAILURE   3015
+#define RECOVERY_BINARY_FAILURE      3016
+#define RECOVERY_PARTITIONWRITE_FAILURE   3017
+#define RECOVERY_FILECREATE_FAILURE  3018
+#define RECOVERY_FILECOPY_FAILURE    3019
+#define RECOVERY_BATTERY_LOW         3020
+#define RECOVERY_ZIPVERIFIED_FAILURE 3021
+#define RECOVERY_ZIPOPENED_FAILURE   3022
+
+#define BATTERY_CAPCITY_FILE "/sys/class/power_supply/battery/capacity"
+#define BATTERY_STATUS_FILE  "/sys/class/power_supply/battery/status"
+// GmsCore enters recovery mode to install package when having enough battery
+// percentage. Normally, the threshold is 40% without charger and 20% with charger.
+// So we should check battery with a slightly lower limitation.
+#define BATTERY_OK_PERCENTAGE 30
+#define BATTERY_WITH_CHARGER_OK_PERCENTAGE 15
+
 // Default allocation of progress bar segments to operations
 static const int VERIFICATION_PROGRESS_TIME = 60;
 static const float VERIFICATION_PROGRESS_FRACTION = 0.25;
@@ -49,11 +68,12 @@ static const float DEFAULT_IMAGE_PROGRESS_FRACTION = 0.1;
 
 // If the package contains an update binary, extract it and run it.
 static int
-try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache) {
+try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache, unsigned int* err_no) {
     const ZipEntry* binary_entry =
             mzFindZipEntry(zip, ASSUMED_UPDATE_BINARY_NAME);
     if (binary_entry == NULL) {
         mzCloseZipArchive(zip);
+        if (err_no != NULL) *err_no = RECOVERY_BINARY_FAILURE;
         return INSTALL_CORRUPT;
     }
 
@@ -63,6 +83,7 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache) {
     if (fd < 0) {
         mzCloseZipArchive(zip);
         LOGE("Can't make %s\n", binary);
+        if (err_no != NULL) *err_no = RECOVERY_FILECREATE_FAILURE;
         return INSTALL_ERROR;
     }
     bool ok = mzExtractZipEntryToFile(zip, binary_entry, fd);
@@ -71,6 +92,7 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache) {
 
     if (!ok) {
         LOGE("Can't copy %s\n", ASSUMED_UPDATE_BINARY_NAME);
+        if (err_no != NULL) *err_no = RECOVERY_FILECOPY_FAILURE;
         return INSTALL_ERROR;
     }
 
@@ -179,6 +201,12 @@ try_update_binary(const char* path, ZipArchive* zip, bool* wipe_cache) {
             // to be able to reboot during installation (useful for
             // debugging packages that don't exit).
             ui->SetEnableReboot(true);
+        } else if (strcmp(command, "log") == 0) {
+            // Save the logging request from updater and write to
+            // result txt file later.
+            char* line = strtok(NULL, "\n");
+            sscanf(line, "error: %u", err_no);
+            printf("%s\n",line);
         } else {
             LOGE("unknown command [%s]\n", command);
         }
@@ -248,7 +276,7 @@ mdtp_update()
 #endif /* USE_MDTP */
 
 static int
-really_install_package(const char *path, bool* wipe_cache, bool needs_mount)
+really_install_package(const char *path, bool* wipe_cache, bool needs_mount, unsigned int* err_no)
 {
     ui->SetBackground(RecoveryUI::INSTALLING_UPDATE);
     ui->Print("Finding update package...\n");
@@ -271,6 +299,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount)
     MemMapping map;
     if (sysMapFile(path, &map) != 0) {
         LOGE("failed to map file\n");
+        if (err_no != NULL) *err_no = RECOVERY_FILEMAP_FAILURE;
         return INSTALL_CORRUPT;
     }
 
@@ -278,6 +307,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount)
     Certificate* loadedKeys = load_keys(PUBLIC_KEYS_FILE, &numKeys);
     if (loadedKeys == NULL) {
         LOGE("Failed to load keys\n");
+        if (err_no != NULL) *err_no = RECOVERY_KEYLOADED_FAILURE;
         return INSTALL_CORRUPT;
     }
     LOGI("%d key(s) loaded from %s\n", numKeys, PUBLIC_KEYS_FILE);
@@ -291,6 +321,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount)
     if (err != VERIFY_SUCCESS) {
         LOGE("signature verification failed\n");
         sysReleaseMap(&map);
+        if (err_no != NULL) *err_no = RECOVERY_ZIPVERIFIED_FAILURE;
         return INSTALL_CORRUPT;
     }
 
@@ -301,6 +332,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount)
     if (err != 0) {
         LOGE("Can't open %s\n(%s)\n", path, err != -1 ? strerror(err) : "bad");
         sysReleaseMap(&map);
+        if (err_no != NULL) *err_no = RECOVERY_ZIPOPENED_FAILURE;
         return INSTALL_CORRUPT;
     }
 
@@ -308,7 +340,7 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount)
      */
     ui->Print("Installing update...\n");
     ui->SetEnableReboot(false);
-    int result = try_update_binary(path, &zip, wipe_cache);
+    int result = try_update_binary(path, &zip, wipe_cache, err_no);
     ui->SetEnableReboot(true);
     ui->Print("\n");
 
@@ -327,12 +359,55 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount)
 
     return result;
 }
+static int readFromFile(const char* path, char* buf, size_t size) {
+    char *cp = NULL;
+
+    if (path == NULL || strlen(path) == 0)
+        return -1;
+    int fd = open(path, O_RDONLY, 0);
+    if (fd < 0) {
+        printf("Could not open '%s'\n", path);
+        return -1;
+    }
+
+    ssize_t count = read(fd, buf, size);
+    close(fd);
+    return count;
+}
+
+static bool is_battery_ok() {
+  char buf[64] = {0};
+  int capacity = 0;
+  bool charged = false;
+  int i = 0;
+
+  while (i < 5 && readFromFile(BATTERY_CAPCITY_FILE,buf,64) <= 0) {
+     sleep(1);
+     i++;
+  }
+  if (i < 5) {
+    sscanf(buf,"%d",&capacity);
+  } else {
+    return false;
+  }
+  printf("The left battery capcity:%d\n",capacity);
+  memset(buf,0,64);
+  readFromFile(BATTERY_STATUS_FILE,buf,64);
+  printf("The battery status:%s\n",buf);
+  charged = (strcmp(buf,"Charging") == 0);
+  return ((capacity >= BATTERY_OK_PERCENTAGE) || (charged && capacity >= BATTERY_WITH_CHARGER_OK_PERCENTAGE));
+}
 
 int
 install_package(const char* path, bool* wipe_cache, const char* install_file,
-                bool needs_mount)
+                bool needs_mount, unsigned int* err_no)
 {
     modified_flash = true;
+
+    if (is_battery_ok() == false) {
+        if (err_no != NULL) *err_no = RECOVERY_BATTERY_LOW;
+        return INSTALL_ERROR;
+    }
 
     FILE* install_log = fopen_path(install_file, "w");
     if (install_log) {
@@ -347,9 +422,10 @@ install_package(const char* path, bool* wipe_cache, const char* install_file,
     }
     if (result != 0) {
         LOGE("failed to set up expected mounts for install; aborting\n");
+        if (err_no != NULL) *err_no = RECOVERY_FILEMOUNT_FAILURE;
         result = INSTALL_ERROR;
     } else {
-        result = really_install_package(path, wipe_cache, needs_mount);
+        result = really_install_package(path, wipe_cache, needs_mount, err_no);
     }
     if (install_log) {
         fputc(result == INSTALL_SUCCESS ? '1' : '0', install_log);

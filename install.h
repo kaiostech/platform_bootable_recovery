@@ -28,7 +28,7 @@ enum { INSTALL_SUCCESS, INSTALL_ERROR, INSTALL_CORRUPT, INSTALL_NONE };
 // returned and *wipe_cache is true on exit, caller should wipe the
 // cache partition.
 int install_package(const char* root_path, bool* wipe_cache,
-                    const char* install_file, bool needs_mount);
+                    const char* install_file, bool needs_mount, unsigned int* err_no);
 
 #ifdef __cplusplus
 }
