@@ -720,6 +720,7 @@ static bool wipe_data(int should_confirm, Device* device) {
         device->PreWipeData() &&
         erase_volume("/data") &&
         erase_volume("/cache") &&
+		erase_volume("/data/usbmsc_mnt") &&
         device->PostWipeData();
     ui->Print("Data wipe %s.\n", success ? "complete" : "failed");
     return success;
