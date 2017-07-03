@@ -1890,6 +1890,7 @@ Value* RangeSha1Fn(const char* name, State* state, int argc, Expr* argv[]) {
     Value* blockdev_filename;
     Value* ranges;
     const uint8_t* digest = NULL;
+    RangeSet* rs = NULL;
     if (ReadValueArgs(state, argv, 2, &blockdev_filename, &ranges) < 0) {
         return NULL;
     }
@@ -1909,7 +1910,7 @@ Value* RangeSha1Fn(const char* name, State* state, int argc, Expr* argv[]) {
         goto done;
     }
 
-    RangeSet* rs = parse_range(ranges->data);
+    rs = parse_range(ranges->data);
     uint8_t buffer[BLOCKSIZE];
 
     SHA_CTX ctx;
@@ -1934,11 +1935,16 @@ Value* RangeSha1Fn(const char* name, State* state, int argc, Expr* argv[]) {
         }
     }
     digest = SHA_final(&ctx);
-    close(fd);
 
   done:
+    if (fd >= 0){
+        close(fd);
+    }
     FreeValue(blockdev_filename);
     FreeValue(ranges);
+    if (rs != NULL) {
+        free(rs);
+    }
     if (digest == NULL) {
         return StringValue(strdup(""));
     } else {
