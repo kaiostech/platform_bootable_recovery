@@ -716,11 +716,21 @@ static bool wipe_data(int should_confirm, Device* device) {
     modified_flash = true;
 
     ui->Print("\n-- Wiping data...\n");
+    Volume *v = volume_for_path("/data/usbmsc_mnt");
+    bool usbmsc_present = false;
+
+    if (v == NULL) {
+        usbmsc_present = false;
+    } else if (strcmp(v->mount_point, "/data/usbmsc_mnt") == 0) {
+        usbmsc_present = true;
+    }
+
     bool success =
         device->PreWipeData() &&
         erase_volume("/data") &&
         erase_volume("/cache") &&
-		erase_volume("/data/usbmsc_mnt") &&
+        /* erase usbmsc partition only if it exists */
+	(usbmsc_present ? (erase_volume("/data/usbmsc_mnt")) : true) &&
         device->PostWipeData();
     ui->Print("Data wipe %s.\n", success ? "complete" : "failed");
     return success;
