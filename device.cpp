@@ -62,6 +62,12 @@ int Device::HandleMenuKey(int key, int visible) {
     case KEY_VOLUMEUP:
       return kHighlightUp;
 
+    case KEY_LEFT:
+        return kScrollLeft;
+
+    case KEY_RIGHT:
+        return kScrollRight;
+
     case KEY_ENTER:
     case KEY_POWER:
       return kInvokeItem;

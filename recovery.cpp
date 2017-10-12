@@ -580,6 +580,12 @@ get_menu_selection(const char* const * headers, const char* const * items,
                 case Device::kHighlightDown:
                     selected = ui->SelectMenu(++selected);
                     break;
+                case Device::kScrollLeft:
+                    ui->ScrollMenuItem(Device::kScrollLeft);
+                    break;
+                case Device::kScrollRight:
+                    ui->ScrollMenuItem(Device::kScrollRight);
+                    break;
                 case Device::kInvokeItem:
                     chosen_item = selected;
                     break;
@@ -1215,7 +1221,7 @@ main(int argc, char **argv) {
     property_list(print_property, NULL);
     printf("\n");
 
-    ui->Print("Supported API: %d\n", RECOVERY_API_VERSION);
+    //ui->Print("Supported API: %d\n", RECOVERY_API_VERSION);
 
     if (update_package != NULL) {
         fota_reset_status();

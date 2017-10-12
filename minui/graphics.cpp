@@ -114,12 +114,17 @@ void gr_text(int x, int y, const char *s, bool bold)
     x += overscan_offset_x;
     y += overscan_offset_y;
 
+    int len = (int) strlen(s);
+    int charCount = 0;
     unsigned char ch;
     while ((ch = *s++)) {
         if (outside(x, y) || outside(x+font->cwidth-1, y+font->cheight-1)) break;
 
         if (ch < ' ' || ch > '~') {
             ch = '?';
+        }
+        if ((len > 15) && (charCount > MAX_CHARS)) {
+            ch = '.';
         }
 
         unsigned char* src_p = font->texture->data + ((ch - ' ') * font->cwidth) +
@@ -129,8 +134,12 @@ void gr_text(int x, int y, const char *s, bool bold)
         text_blend(src_p, font->texture->row_bytes,
                    dst_p, gr_draw->row_bytes,
                    font->cwidth, font->cheight);
-
-        x += font->cwidth;
+        if((ch != ' ') && (ch != '.')) {
+            x += font->cwidth + FONT_SPACE;
+        } else {
+            x += font->cwidth;
+        }
+        charCount++;
     }
 }
 
@@ -203,7 +212,7 @@ void gr_fill(int x1, int y1, int x2, int y2)
         int x, y;
         for (y = y1; y < y2; ++y) {
             unsigned char* px = p;
-            for (x = x1; x < x2; ++x) {
+            for (x = x1; x < x2+ (FONT_SPACE + 1); ++x) {
                 *px++ = gr_current_r;
                 *px++ = gr_current_g;
                 *px++ = gr_current_b;

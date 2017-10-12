@@ -25,6 +25,9 @@
 // Graphics.
 //
 
+#define FONT_SPACE 7
+#define MAX_CHARS 12
+
 struct GRSurface {
     int width;
     int height;

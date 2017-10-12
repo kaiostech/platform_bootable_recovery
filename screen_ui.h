@@ -55,6 +55,7 @@ class ScreenRecoveryUI : public RecoveryUI {
     void StartMenu(const char* const * headers, const char* const * items,
                    int initial_selection);
     int SelectMenu(int sel);
+    void ScrollMenuItem(int sel);
     void EndMenu();
 
     void KeyLongPress(int);
@@ -62,7 +63,7 @@ class ScreenRecoveryUI : public RecoveryUI {
     void Redraw();
 
     enum UIElement {
-        HEADER, MENU, MENU_SEL_BG, MENU_SEL_BG_ACTIVE, MENU_SEL_FG, LOG, TEXT_FILL, INFO
+        HEADER, MENU, MENU_SEL_BG, MENU_SEL_BG_ACTIVE, MENU_SEL_FG, LOG, TEXT_FILL, TITLE, TEXT_INFO
     };
     void SetColor(UIElement e);
 
@@ -99,9 +100,10 @@ class ScreenRecoveryUI : public RecoveryUI {
     bool show_text_ever;   // has show_text ever been true?
 
     char** menu_;
+    char* scroll_text;
     const char* const* menu_headers_;
-    bool show_menu;
-    int menu_items, menu_sel;
+    bool show_menu, scroll_menuitem;
+    int menu_items, menu_sel, menuitem_event;
 
     // An alternate text screen, swapped with 'text_' when we're viewing a log file.
     char** file_viewer_text_;

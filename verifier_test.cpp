@@ -146,6 +146,7 @@ class FakeUI : public RecoveryUI {
     void StartMenu(const char* const * headers, const char* const * items,
                            int initial_selection) { }
     int SelectMenu(int sel) { return 0; }
+    void ScrollMenuItem(int sel) { }
     void EndMenu() { }
 };
 

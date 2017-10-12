@@ -48,6 +48,46 @@ static double now() {
     return tv.tv_sec + tv.tv_usec / 1000000.0;
 }
 
+static char* getScrolltext(const char* str) {
+    if(str != NULL) {
+        int i, j, charsCount = 0;
+        bool scanForward = false;
+        int text_col = gr_fb_width() / char_width;
+        text_col = (text_col/2);
+        int len = strlen(str);
+
+        if(len > MAX_CHARS) {
+            if(str[MAX_CHARS + 1] == ' ') {
+                scanForward = true;
+            }
+        }
+
+        if(scanForward) {
+            for(i = 0; i < len ;i++ ) {
+                if( (str[i] == ' ') && ( i >= (MAX_CHARS + 1))) {
+                    break;
+                }
+            }
+        } else {
+            for(i = (MAX_CHARS + 1); i >= 0 ;i-- ) {
+                if( (str[i] == ' ') || (str[i] == '/')) {
+                    i++;
+                    break;
+                }
+            }
+        }
+
+        charsCount = len - i;
+        char *array = (char *)malloc((charsCount+1)*sizeof(char));
+        for(j=0; j < charsCount; j++,i++) {
+            array[j] = str[i];
+        }
+        array[j] = '\0';
+        return array;
+    }
+    return NULL;
+}
+
 ScreenRecoveryUI::ScreenRecoveryUI() :
     currentIcon(NONE),
     installingFrame(0),
@@ -67,9 +107,12 @@ ScreenRecoveryUI::ScreenRecoveryUI() :
     show_text(false),
     show_text_ever(false),
     menu_(nullptr),
+    scroll_text(nullptr),
     show_menu(false),
+    scroll_menuitem(false),
     menu_items(0),
     menu_sel(0),
+    menuitem_event(Device::kScrollRight),
     file_viewer_text_(nullptr),
     animation_fps(20),
     installing_frames(-1),
@@ -176,8 +219,8 @@ void ScreenRecoveryUI::draw_progress_locked() {
 
 void ScreenRecoveryUI::SetColor(UIElement e) {
     switch (e) {
-        case INFO:
-            gr_color(249, 194, 0, 255);
+        case TITLE:
+            gr_color(0, 255, 0, 255);
             break;
         case HEADER:
             gr_color(247, 0, 6, 255);
@@ -197,6 +240,9 @@ void ScreenRecoveryUI::SetColor(UIElement e) {
             break;
         case TEXT_FILL:
             gr_color(0, 0, 0, 160);
+            break;
+        case TEXT_INFO:
+            gr_color(255, 255, 255, 255);
             break;
         default:
             gr_color(255, 255, 255, 255);
@@ -227,6 +273,10 @@ static const char* REGULAR_HELP[] = {
     NULL
 };
 
+static const char* REGULAR_HELP_LINE1 = "Use navigation" ;
+static const char* REGULAR_HELP_LINE2 = "and power keys";
+static const char* REGULAR_HELP_LINE3 = "for selection";
+
 static const char* LONG_PRESS_HELP[] = {
     "Any button cycles highlight.",
     "Long-press activates.",
@@ -248,15 +298,12 @@ void ScreenRecoveryUI::draw_screen_locked() {
             char recovery_fingerprint[PROPERTY_VALUE_MAX];
             property_get("ro.bootimage.build.fingerprint", recovery_fingerprint, "");
 
-            SetColor(INFO);
+            SetColor(TITLE);
             DrawTextLine(&y, "KaiOS Recovery", true);
-            for (auto& chunk : android::base::Split(recovery_fingerprint, ":")) {
-                DrawTextLine(&y, chunk.c_str(), false);
-            }
-            DrawTextLines(&y, HasThreeButtons() ? REGULAR_HELP : LONG_PRESS_HELP);
-
-            SetColor(HEADER);
-            DrawTextLines(&y, menu_headers_);
+            SetColor(TEXT_INFO);
+            DrawTextLine(&y,REGULAR_HELP_LINE1, false);
+            DrawTextLine(&y,REGULAR_HELP_LINE2, false);
+            DrawTextLine(&y,REGULAR_HELP_LINE3, false);
 
             SetColor(MENU);
             DrawHorizontalRule(&y);
@@ -268,7 +315,19 @@ void ScreenRecoveryUI::draw_screen_locked() {
                     gr_fill(0, y - 2, gr_fb_width(), y + char_height + 2);
                     // Bold white text for the selected item.
                     SetColor(MENU_SEL_FG);
-                    gr_text(4, y, menu_[i], true);
+
+                    if(scroll_menuitem == false) {
+                        gr_text(4, y, menu_[i], true);
+                    } else {
+                        //right navigation key
+                        if(menuitem_event == Device::kScrollRight) {
+                            gr_text(4, y, scroll_text, true);
+                        }
+                        //left navigation key
+                        else if(menuitem_event == Device::kScrollLeft) {
+                            gr_text(4, y, menu_[i], true);
+                        }
+                    }
                     SetColor(MENU);
                 } else {
                     gr_text(4, y, menu_[i], false);
@@ -393,7 +452,7 @@ void ScreenRecoveryUI::Init() {
 
     gr_font_size(&char_width, &char_height);
     text_rows_ = gr_fb_height() / char_height;
-    text_cols_ = gr_fb_width() / char_width;
+    text_cols_ = (gr_fb_width() / char_width) + FONT_SPACE;
 
     text_ = Alloc2d(text_rows_, text_cols_ + 1);
     file_viewer_text_ = Alloc2d(text_rows_, text_cols_ + 1);
@@ -564,6 +623,7 @@ void ScreenRecoveryUI::ShowFile(FILE* fp) {
     fstat(fileno(fp), &sb);
 
     bool show_prompt = false;
+
     while (true) {
         if (show_prompt) {
             Print("--(%d%% of %d bytes)--",
@@ -659,10 +719,29 @@ int ScreenRecoveryUI::SelectMenu(int sel) {
         if (menu_sel >= menu_items) menu_sel = 0;
 
         sel = menu_sel;
+        scroll_menuitem = false;
         if (menu_sel != old_sel) update_screen_locked();
     }
     pthread_mutex_unlock(&updateMutex);
     return sel;
+}
+
+void ScreenRecoveryUI::ScrollMenuItem(int sel) {
+    pthread_mutex_lock(&updateMutex);
+    if (show_menu) {
+        if((text_cols_/2) < strlen(menu_[menu_sel])) {
+            scroll_menuitem = true;
+            menuitem_event = sel;
+            if(scroll_text != NULL) {
+                free(scroll_text);
+                scroll_text = NULL;
+            }
+            scroll_text = getScrolltext(menu_[menu_sel]);
+            printf("ScrollMenuItem scroll_text: %s \n", scroll_text);
+        }
+        if (scroll_menuitem) update_screen_locked();
+    }
+    pthread_mutex_unlock(&updateMutex);
 }
 
 void ScreenRecoveryUI::EndMenu() {

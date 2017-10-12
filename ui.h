@@ -115,6 +115,10 @@ class RecoveryUI {
     // Returns the actual item selected.
     virtual int SelectMenu(int sel) = 0;
 
+    // Scroll the menu item highlight to the given index.
+    // Scroll left/Right item selected.
+    virtual void ScrollMenuItem(int sel) = 0;
+
     // End menu mode, resetting the text overlay so that ui_print()
     // statements will be displayed.
     virtual void EndMenu() = 0;
