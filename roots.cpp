@@ -203,48 +203,9 @@ int format_volume(const char* volume) {
         char buf[64];
         int err;
 
-        regex_t regex;
-        err = regcomp(&regex, "^Volume[ ]ID:[ ]+([0-9]+)", REG_EXTENDED);
-        if (err != 0) {
-            LOGE("failed to compile volume id regex\n");
-            return -1;
-        }
-
-        // v->blk_device contains the ubi device name (ubi0:userdata)
-        // We call ubinfo and provide the volume name skipping first 5 chars (ubi0:)
-        FILE * fp;
-        snprintf(buf, sizeof(buf), "/sbin/ubinfo /dev/ubi0 --name=%s",
-                 v->blk_device + 5);
-        fp = popen(buf, "r");
-        if (fp == NULL) {
-            LOGE("failed to run %s\n", buf);
-            return -1;
-        }
-
-        // Get the first line which contains the volume id
-        fgets(buf, sizeof(buf), fp);
-        pclose(fp);
-
-        // Extract the volume id from the ubinfo output
-        char vol_id[2];
-        regmatch_t m[2];
-#define ARRAY_SIZE(a) ((int)(sizeof(a)/sizeof(a[0])))
-        err = regexec(&regex, buf, ARRAY_SIZE(m), m, 0);
-#undef ARRAY_SIZE
-        if (err != 0) {
-            LOGE("failed to find volume id for ubifs device %s\n", v->blk_device);
-            return -1;
-        }
-        size_t match_length = m[1].rm_eo - m[1].rm_so + 1;
-#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
-        snprintf(vol_id, MIN(sizeof(vol_id), match_length), "%s", buf + m[1].rm_so);
-#undef MIN
-
-        // Construct the dev node for the volume
-        snprintf(buf, sizeof(buf), "/dev/ubi0_%s", vol_id);
-
         // Call ubiupdatevol with volume truncation to wipe the volume
-        const char* const ubiupdatevol_argv[] = {"ubiupdatevol", buf, "-t", NULL};
+        // v-> blk_device will have device entry of the form /dev/ubi1_0
+        const char* const ubiupdatevol_argv[] = {"ubiupdatevol", v->blk_device, "-t", NULL};
         err = exec_cmd("/sbin/ubiupdatevol", (char* const*)ubiupdatevol_argv);
         if (err != 0) {
             LOGE("failed to execute ubiupdatevol: %d\n", err);
