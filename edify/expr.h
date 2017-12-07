@@ -25,7 +25,7 @@
 extern "C" {
 #endif
 
-#define MAX_STRING_LEN 1024
+#define MAX_STRING_LEN 8192
 
 typedef struct Expr Expr;
 
