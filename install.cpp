@@ -55,9 +55,9 @@ extern RecoveryUI* ui;
 #define BATTERY_CAPCITY_FILE "/sys/class/power_supply/battery/capacity"
 #define BATTERY_STATUS_FILE  "/sys/class/power_supply/battery/status"
 // GmsCore enters recovery mode to install package when having enough battery
-// percentage. Normally, the threshold is 40% without charger and 20% with charger.
+// percentage. Normally, the threshold is 20% without charger and 15% with charger.
 // So we should check battery with a slightly lower limitation.
-#define BATTERY_OK_PERCENTAGE 30
+#define BATTERY_OK_PERCENTAGE 20
 #define BATTERY_WITH_CHARGER_OK_PERCENTAGE 15
 
 // Default allocation of progress bar segments to operations

@@ -89,6 +89,7 @@ char* locale = NULL;
 char* stage = NULL;
 char* reason = NULL;
 bool modified_flash = false;
+static unsigned int err_no = 0;
 
 /*
  * The recovery tool communicates with the main system through /cache files.
@@ -440,14 +441,17 @@ finish_recovery(const char *send_intent) {
     copy_logs();
 
     // Reset to normal system boot so recovery won't cycle indefinitely.
-    struct bootloader_message boot;
-    memset(&boot, 0, sizeof(boot));
-    set_bootloader_message(&boot);
+    if (err_no != 3020) {
+      /*3020: low battery, should not clean*/
+      struct bootloader_message boot;
+      memset(&boot, 0, sizeof(boot));
+      set_bootloader_message(&boot);
 
-    // Remove the command file, so recovery won't repeat indefinitely.
-    if (ensure_path_mounted(COMMAND_FILE) != 0 ||
+      // Remove the command file, so recovery won't repeat indefinitely.
+      if (ensure_path_mounted(COMMAND_FILE) != 0 ||
         (unlink(COMMAND_FILE) && errno != ENOENT)) {
         LOGW("Can't unlink %s\n", COMMAND_FILE);
+      }
     }
 
     ensure_path_unmounted(CACHE_ROOT);
@@ -1128,7 +1132,7 @@ main(int argc, char **argv) {
     int status = INSTALL_SUCCESS;
     bool mount_required = true;
     int arg;
-    unsigned int err_no = 0;
+
     while ((arg = getopt_long(argc, argv, "", OPTIONS, NULL)) != -1) {
         switch (arg) {
         case 'i': send_intent = optarg; break;
@@ -1235,6 +1239,7 @@ main(int argc, char **argv) {
 
     if (update_package != NULL) {
         fota_reset_status();
+        err_no = 0;
         status = install_package(update_package, &should_wipe_cache, TEMPORARY_INSTALL_FILE, mount_required, &err_no);
         if (status == INSTALL_SUCCESS && should_wipe_cache) {
             wipe_cache(false, device);
