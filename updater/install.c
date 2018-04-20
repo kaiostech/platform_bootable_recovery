@@ -53,6 +53,8 @@
 #include "wipe.h"
 #endif
 
+#include "ubiutils/ubiutils.h"
+
 void uiPrint(State* state, char* buffer) {
     char* line = strtok(buffer, "\n");
     UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
@@ -163,7 +165,15 @@ Value* MountFn(const char* name, State* state, int argc, Expr* argv[]) {
             result = strdup("");
             goto done;
         }
-        result = mount_point;
+      result = mount_point;
+    } else if (strcmp(partition_type, "UBI") == 0) {
+        if (ubi_mount(location, mount_point, fs_type, 0) != 0) {
+            uiPrintf(state, "%s: failed to mount %s at %s: %s\n",
+                    name, location, mount_point, strerror(errno));
+            result = strdup("");
+         } else {
+             result = mount_point;
+         }
     } else {
         if (mount(location, mount_point, fs_type,
                   MS_NOATIME | MS_NODEV | MS_NODIRATIME,
@@ -475,6 +485,15 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
                     name, status, location);
             result = strdup("");
             goto done;
+        }
+        result = location;
+    } else if (strcmp(partition_type, "UBI") == 0) {
+        const char* const ubiupdatevol_argv[] = {"ubiupdatevol", location, "-t", NULL};
+        int status = exec_cmd("/sbin/ubiupdatevol", (char* const*)ubiupdatevol_argv);
+        if (status != 0) {
+            fprintf(stderr,"failed to execute ubiupdatevol: %d\n", status);
+            result = strdup("");
+            goto done;;
         }
         result = location;
     } else {
@@ -890,15 +909,16 @@ static int ApplyParsedPerms(
         struct perm_parsed_args parsed)
 {
     int bad = 0;
-
-    if (parsed.has_selabel) {
-        if (lsetfilecon(filename, parsed.selabel) != 0) {
-            uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s failed: %s\n",
-                    filename, parsed.selabel, strerror(errno));
-            bad++;
+    /*nand not support selinux*/
+    if (!is_mtd_dev()) {
+        if (parsed.has_selabel) {
+            if (lsetfilecon(filename, parsed.selabel) != 0) {
+                uiPrintf(state, "ApplyParsedPerms: lsetfilecon of %s to %s failed: %s\n",
+                        filename, parsed.selabel, strerror(errno));
+                bad++;
+            }
         }
     }
-
     /* ignore symlinks */
     if (S_ISLNK(statptr->st_mode)) {
         return bad;

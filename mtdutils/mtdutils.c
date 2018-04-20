@@ -67,6 +67,16 @@ static MtdState g_mtd_state = {
 
 #define MTD_PROC_FILENAME   "/proc/mtd"
 
+int is_mtd_dev(void)
+{
+    if (g_mtd_state.partitions == NULL) {
+        return ((mtd_scan_partitions() <= 0) ? 0:1);
+    } else {
+        return ((g_mtd_state.partition_count <= 0) ? 0:1);
+    }
+}
+
+
 int
 mtd_scan_partitions()
 {

@@ -30,6 +30,7 @@
 #include "applypatch.h"
 #include "mtdutils/mtdutils.h"
 #include "edify/expr.h"
+#include "ubiutils/ubiutils.h"
 
 static int LoadPartitionContents(const char* filename, FileContents* file);
 static ssize_t FileSink(const unsigned char* data, ssize_t len, void* token);
@@ -55,7 +56,8 @@ int LoadFileContents(const char* filename, FileContents* file) {
     // A special 'filename' beginning with "MTD:" or "EMMC:" means to
     // load the contents of a partition.
     if (strncmp(filename, "MTD:", 4) == 0 ||
-        strncmp(filename, "EMMC:", 5) == 0) {
+        strncmp(filename, "EMMC:", 5) == 0 ||
+        strncmp(filename, "UBI:", 4) == 0 ) {
         return LoadPartitionContents(filename, file);
     }
 
@@ -119,7 +121,7 @@ static int compare_size_indices(const void* a, const void* b) {
 // "end-of-file" marker), so the caller must specify the possible
 // lengths and the hash of the data, and we'll do the load expecting
 // to find one of those hashes.
-enum PartitionType { MTD, EMMC };
+enum PartitionType { MTD, UBI, EMMC };
 
 static int LoadPartitionContents(const char* filename, FileContents* file) {
     char* copy = strdup(filename);
@@ -129,6 +131,8 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
 
     if (strcmp(magic, "MTD") == 0) {
         type = MTD;
+    } else if (strcmp(magic, "UBI") == 0) {
+        type = UBI;
     } else if (strcmp(magic, "EMMC") == 0) {
         type = EMMC;
     } else {
@@ -146,8 +150,8 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
         }
     }
     if (colons < 3 || colons%2 == 0) {
-        printf("LoadPartitionContents called with bad filename (%s)\n",
-               filename);
+        printf("LoadPartitionContents called with bad filename (%s) and colons:%d\n",
+               filename, colons);
     }
 
     int pairs = (colons-1)/2;     // # of (size,sha1) pairs in filename
@@ -196,6 +200,7 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
             }
             break;
 
+        case UBI:
         case EMMC:
             dev = fopen(partition, "rb");
             if (dev == NULL) {
@@ -226,6 +231,7 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
                     read = mtd_read_data(ctx, p, next);
                     break;
 
+                case UBI:
                 case EMMC:
                     read = fread(p, 1, next, dev);
                     break;
@@ -271,6 +277,7 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
             mtd_read_close(ctx);
             break;
 
+        case UBI:
         case EMMC:
             fclose(dev);
             break;
@@ -356,6 +363,8 @@ int WriteToPartition(unsigned char* data, size_t len,
     enum PartitionType type;
     if (strcmp(magic, "MTD") == 0) {
         type = MTD;
+    } else if (strcmp(magic, "UBI") == 0) {
+        type = UBI;
     } else if (strcmp(magic, "EMMC") == 0) {
         type = EMMC;
     } else {
@@ -410,6 +419,7 @@ int WriteToPartition(unsigned char* data, size_t len,
             }
             break;
 
+        case UBI:
         case EMMC:
         {
             size_t start = 0;
@@ -419,6 +429,10 @@ int WriteToPartition(unsigned char* data, size_t len,
                 printf("failed to open %s: %s\n", partition, strerror(errno));
                 return -1;
             }
+            if (type == UBI) {
+                ubi_fupdate(fd, len);
+            }
+
             int attempt;
 
             for (attempt = 0; attempt < 2; ++attempt) {
@@ -838,7 +852,8 @@ static int GenerateTarget(FileContents* source_file,
         // file?
 
         if (strncmp(target_filename, "MTD:", 4) == 0 ||
-            strncmp(target_filename, "EMMC:", 5) == 0) {
+            strncmp(target_filename, "EMMC:", 5) == 0 ||
+            strncmp(target_filename, "UBI:", 4) == 0) {
             // If the target is a partition, we're actually going to
             // write the output to /tmp and then copy it to the
             // partition.  statfs() always returns 0 blocks free for
@@ -880,7 +895,8 @@ static int GenerateTarget(FileContents* source_file,
                 // location.
 
                 if (strncmp(source_filename, "MTD:", 4) == 0 ||
-                    strncmp(source_filename, "EMMC:", 5) == 0) {
+                    strncmp(source_filename, "EMMC:", 5) == 0 ||
+                    strncmp(source_filename, "UBI:", 4) == 0) {
                     // It's impossible to free space on the target filesystem by
                     // deleting the source if the source is a partition.  If
                     // we're ever in a state where we need to do this, fail.
@@ -900,7 +916,7 @@ static int GenerateTarget(FileContents* source_file,
                 }
                 made_copy = 1;
                 unlink(source_filename);
-
+                sync();
                 size_t free_space = FreeSpaceForFile(target_fs);
                 printf("(now %ld bytes free for target) ", (long)free_space);
             }
@@ -925,7 +941,8 @@ static int GenerateTarget(FileContents* source_file,
         output = -1;
         outname = NULL;
         if (strncmp(target_filename, "MTD:", 4) == 0 ||
-            strncmp(target_filename, "EMMC:", 5) == 0) {
+            strncmp(target_filename, "EMMC:", 5) == 0 ||
+            strncmp(target_filename, "UBI:", 4) == 0) {
             // We store the decoded output in memory.
             msi.buffer = malloc(target_size);
             if (msi.buffer == NULL) {

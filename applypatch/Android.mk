@@ -20,6 +20,9 @@ LOCAL_MODULE := libapplypatch
 LOCAL_MODULE_TAGS := eng
 LOCAL_C_INCLUDES += external/bzip2 external/zlib bootable/recovery
 LOCAL_STATIC_LIBRARIES += libmtdutils libmincrypt libbz libz
+#add for ubi support
+LOCAL_STATIC_LIBRARIES += \
+    libubiutils
 
 include $(BUILD_STATIC_LIBRARY)
 
@@ -30,6 +33,9 @@ LOCAL_MODULE := applypatch
 LOCAL_C_INCLUDES += bootable/recovery
 LOCAL_STATIC_LIBRARIES += libapplypatch libmtdutils libmincrypt libbz
 LOCAL_SHARED_LIBRARIES += libz libcutils libstdc++ libc
+#add for ubi support
+LOCAL_STATIC_LIBRARIES += \
+    libubiutils
 
 include $(BUILD_EXECUTABLE)
 
@@ -42,6 +48,9 @@ LOCAL_MODULE_TAGS := eng
 LOCAL_C_INCLUDES += bootable/recovery
 LOCAL_STATIC_LIBRARIES += libapplypatch libmtdutils libmincrypt libbz
 LOCAL_STATIC_LIBRARIES += libz libcutils libstdc++ libc
+#add for ubi support
+LOCAL_STATIC_LIBRARIES += \
+    libubiutils
 
 include $(BUILD_EXECUTABLE)
 
