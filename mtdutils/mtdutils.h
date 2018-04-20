@@ -24,6 +24,8 @@ extern "C" {
 #endif
 
 typedef struct MtdPartition MtdPartition;
+/*Yes !=0, NO: = 0*/
+int is_mtd_dev(void);
 
 int mtd_scan_partitions(void);
 

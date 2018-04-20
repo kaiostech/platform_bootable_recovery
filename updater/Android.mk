@@ -42,6 +42,9 @@ tune2fs_static_libraries := \
  libext2_e2p \
  libext2fs
 LOCAL_STATIC_LIBRARIES += libtune2fs $(tune2fs_static_libraries)
+# Kaios: ubi support
+LOCAL_STATIC_LIBRARIES += \
+    libubiutils
 
 LOCAL_C_INCLUDES += external/e2fsprogs/misc
 LOCAL_C_INCLUDES += $(LOCAL_PATH)/..
