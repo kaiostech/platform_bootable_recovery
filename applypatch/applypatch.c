@@ -46,6 +46,7 @@ static int GenerateTarget(FileContents* source_file,
 
 static int mtd_partitions_scanned = 0;
 
+const char* cache_temp_source = CACHE_TEMP_SOURCE;
 // Read a file into memory; store the file contents and associated
 // metadata in *file.
 //
@@ -617,8 +618,11 @@ int applypatch_check(const char* filename,
         // passes.
 
         if (LoadFileContents(CACHE_TEMP_SOURCE, &file) != 0) {
-            printf("failed to load cache file\n");
-            return 1;
+            printf("failed to load cache file, try to sdcard\n");
+            if (LoadFileContents(SDCARD_TEMP_SOURCE, &file) != 0) {
+                printf("failed to load sdcard file\n");
+                return 1;
+            }
         }
 
         if (FindMatchingPatch(file.sha1, patch_sha1_str, num_patches) < 0) {
@@ -789,8 +793,11 @@ int applypatch(const char* source_filename,
 
         if (LoadFileContents(CACHE_TEMP_SOURCE, &copy_file) < 0) {
             // fail.
-            printf("failed to read copy file\n");
-            return 1;
+            printf("failed to read copy file, try sdcard\n");
+            if (LoadFileContents(SDCARD_TEMP_SOURCE, &copy_file) < 0) {
+                printf("failed to read copy file,from sdcard\n");
+                return 1;
+            }
         }
 
         int to_use = FindMatchingPatch(copy_file.sha1,
@@ -866,7 +873,7 @@ static int GenerateTarget(FileContents* source_file,
                 printf("not enough free space on /cache\n");
                 return 1;
             }
-            if (SaveFileContents(CACHE_TEMP_SOURCE, source_file) < 0) {
+            if (SaveFileContents(cache_temp_source, source_file) < 0) {
                 printf("failed to back up source file\n");
                 return 1;
             }
@@ -910,7 +917,7 @@ static int GenerateTarget(FileContents* source_file,
                     return 1;
                 }
 
-                if (SaveFileContents(CACHE_TEMP_SOURCE, source_file) < 0) {
+                if (SaveFileContents(cache_temp_source, source_file) < 0) {
                     printf("failed to back up source file\n");
                     return 1;
                 }
@@ -1059,7 +1066,7 @@ static int GenerateTarget(FileContents* source_file,
 
     // If this run of applypatch created the copy, and we're here, we
     // can delete it.
-    if (made_copy) unlink(CACHE_TEMP_SOURCE);
+    if (made_copy) unlink(cache_temp_source);
 
     // Success!
     return 0;
