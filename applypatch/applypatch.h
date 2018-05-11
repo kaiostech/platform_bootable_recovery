@@ -39,10 +39,15 @@ typedef struct _FileContents {
 // is corrupted, we look to see if this file contains the bits we want
 // and use it as the source instead.
 #define CACHE_TEMP_SOURCE "/cache/saved.file"
+#define SDCARD_TEMP_ROOT   "/sdcard"
+#define SDCARD_TEMP_DIR    SDCARD_TEMP_ROOT"/ota_cache"
+#define SDCARD_TEMP_SOURCE SDCARD_TEMP_DIR"/saved.file"
+
 
 typedef ssize_t (*SinkFn)(const unsigned char*, ssize_t, void*);
 
 // applypatch.c
+extern const char *cache_temp_source;
 int ShowLicenses();
 size_t FreeSpaceForFile(const char* filename);
 int CacheSizeCheck(size_t bytes);

@@ -131,6 +131,7 @@ int MakeFreeSpaceOnCache(size_t bytes_needed) {
          (long)free_now, (long)bytes_needed);
 
   if (free_now >= bytes_needed) {
+    cache_temp_source = CACHE_TEMP_SOURCE;
     return 0;
   }
 
@@ -143,8 +144,10 @@ int MakeFreeSpaceOnCache(size_t bytes_needed) {
 
   if (entries == 0) {
     // nothing we can delete to free up space!
-    printf("no files can be deleted to free space on /cache\n");
-    return -1;
+    printf("no files can be deleted to free space on /cache, try to sdcard\n");
+    /*return -1;
+     */
+    goto try_sdcard;
   }
 
   // We could try to be smarter about which files to delete:  the
@@ -168,5 +171,22 @@ int MakeFreeSpaceOnCache(size_t bytes_needed) {
   }
   free(names);
   sync();
+
+try_sdcard:
+  if (free_now < bytes_needed) {
+      free_now = FreeSpaceForFile(SDCARD_TEMP_ROOT);
+      printf("%lu bytes free on %s (%ld needed)\n",
+             (long)free_now, SDCARD_TEMP_ROOT, (long)bytes_needed);
+      if (free_now >= bytes_needed) {
+          int result = mkdir(SDCARD_TEMP_DIR, 0755);
+          if (result == 0 || errno == EEXIST) {
+              cache_temp_source = SDCARD_TEMP_SOURCE;
+          } else {
+              printf("mkdir(%s) error: %s\n", SDCARD_TEMP_DIR, strerror(errno));
+              free_now = 0;
+          }
+      }
+  }
+
   return (free_now >= bytes_needed) ? 0 : -1;
 }
