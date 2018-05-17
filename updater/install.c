@@ -285,6 +285,7 @@ int get_Partition_info(char* ptname, unsigned long* byte_size) {
     char sys_path_byte_size[RB_MAX_PATH] = PATH_SYS_LINKED;
     char pbBuffer_size[40] = {0};
     int ret = -1;
+    int fd = -1;
 
     strcpy(path_byname,ptname);
     //the linkedpath will be (/dev/block/mmcblk0p*)
@@ -297,7 +298,7 @@ int get_Partition_info(char* ptname, unsigned long* byte_size) {
     strcat(sys_path_byte_size, "/size");
 
     //open /sys/block/mmcblk0/mmcblk0p*/size
-    int fd = open(sys_path_byte_size, O_RDONLY);
+    fd = open(sys_path_byte_size, O_RDONLY);
     if ( -1 == fd) {
         fprintf(stderr, "get_Partition_info error open %s errno = %d\n", sys_path_byte_size, errno);
         goto GET_SIZE_DONE;
@@ -318,7 +319,6 @@ GET_SIZE_DONE:
     if (fd != -1)
         close(fd);
     return ret;
-
 }
 
 int mmc_raw_erase (char* partition, unsigned long byte_size ) {
@@ -388,8 +388,8 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
     char* fs_type;
     char* partition_type;
     char* location;
-    char* fs_size;
-    char* mount_point;
+    char* fs_size = NULL;
+    char* mount_point = NULL;
 
     if (ReadArgs(state, argv, 5, &fs_type, &partition_type, &location, &fs_size, &mount_point) < 0) {
         return NULL;
@@ -504,6 +504,8 @@ Value* FormatFn(const char* name, State* state, int argc, Expr* argv[]) {
 done:
     free(fs_type);
     free(partition_type);
+    if (fs_size != NULL) free(fs_size);
+    if (mount_point != NULL) free(mount_point);
     if (result != location) free(location);
     return StringValue(result);
 }
@@ -638,7 +640,73 @@ Value* PackageExtractDirFn(const char* name, State* state,
     return StringValue(strdup(success ? "t" : ""));
 }
 
+static bool writeProcessFunction(const unsigned char *data, int dataLen,
+                                 void *cookie)
+{
+    MtdWriteContext* ctx = (MtdWriteContext*)cookie;
+    if (dataLen == 0) {
+        return true;
+    }
+    int wrote = mtd_write_data(ctx, (const char*)data, dataLen);
+    return (wrote == dataLen);
+}
 
+
+Value* PackageExtractImgFn(const char* name, State* state,
+                           int argc, Expr* argv[]) {
+    if (argc != 2) {
+        return ErrorAbort(state, "%s() expects 2 args, got %d",
+                          name, argc);
+    }
+    bool success = false;
+
+    UpdaterInfo* ui = (UpdaterInfo*)(state->cookie);
+    ZipArchive* za = ((UpdaterInfo*)(state->cookie))->package_zip;
+
+    char* zip_path = NULL;
+    char* partition = NULL;
+    if (ReadArgs(state, argv, 2, &zip_path, &partition) < 0) return NULL;
+
+    const ZipEntry* entry = mzFindZipEntry(za, zip_path);
+    if (entry == NULL) {
+        printf("%s: no %s in package\n", name, zip_path);
+        goto done;
+    }
+
+    mtd_scan_partitions();
+    const MtdPartition* mtd = mtd_find_partition_by_name(partition);
+    if (mtd == NULL) {
+        printf("%s: no mtd partition named \"%s\"\n", name, partition);
+        goto done;
+    }
+
+    MtdWriteContext* ctx = mtd_write_partition(mtd);
+    if (ctx == NULL) {
+        printf("%s: can't write mtd partition \"%s\"\n",
+                name, partition);
+        goto done;
+    }
+
+     success = mzProcessZipEntryContents(za, entry, writeProcessFunction, (void*)ctx);
+     if (!success) {
+          printf("mtd_write_data to %s failed: %s\n",
+               partition, strerror(errno));
+     } else {
+          printf("wrote %s partition\n", partition);
+     }
+
+     if (mtd_erase_blocks(ctx, -1) == -1) {
+          printf("%s: error erasing blocks of %s\n", name, partition);
+     }
+     if (mtd_write_close(ctx) != 0) {
+          printf("%s: error closing write of %s\n", name, partition);
+     }
+
+    done:
+        free(zip_path);
+        free(partition);
+    return StringValue(strdup(success ? "t" : ""));
+}
 // package_extract_file(package_path, destination_path)
 //   or
 // package_extract_file(package_path)
@@ -1786,6 +1854,7 @@ void RegisterInstallFunctions() {
     RegisterFunction("delete_recursive", DeleteFn);
     RegisterFunction("package_extract_dir", PackageExtractDirFn);
     RegisterFunction("package_extract_file", PackageExtractFileFn);
+    RegisterFunction("package_extract_img", PackageExtractImgFn);
     RegisterFunction("symlink", SymlinkFn);
 
     // Usage:
