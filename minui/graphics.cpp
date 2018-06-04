@@ -41,6 +41,9 @@ struct GRFont {
     int cheight;
 };
 
+int gr_font_space = 0;
+int gr_chars_max = 0;
+
 static GRFont* gr_font = NULL;
 static minui_backend* gr_backend = NULL;
 
@@ -123,7 +126,7 @@ void gr_text(int x, int y, const char *s, bool bold)
         if (ch < ' ' || ch > '~') {
             ch = '?';
         }
-        if ((len > 15) && (charCount > MAX_CHARS)) {
+        if ((len > gr_chars_max + 3) && (charCount > gr_chars_max)) {
             ch = '.';
         }
 
@@ -135,7 +138,7 @@ void gr_text(int x, int y, const char *s, bool bold)
                    dst_p, gr_draw->row_bytes,
                    font->cwidth, font->cheight);
         if((ch != ' ') && (ch != '.')) {
-            x += font->cwidth + FONT_SPACE;
+            x += font->cwidth + gr_font_space;
         } else {
             x += font->cwidth;
         }
@@ -212,7 +215,7 @@ void gr_fill(int x1, int y1, int x2, int y2)
         int x, y;
         for (y = y1; y < y2; ++y) {
             unsigned char* px = p;
-            for (x = x1; x < x2+ (FONT_SPACE + 1); ++x) {
+            for (x = x1; x < x2+ (gr_font_space + 1); ++x) {
                 *px++ = gr_current_r;
                 *px++ = gr_current_g;
                 *px++ = gr_current_b;
@@ -309,6 +312,15 @@ static void gr_init_font(void)
 
         gr_font->cwidth = font.cwidth;
         gr_font->cheight = font.cheight;
+    }
+    /*This is for fonts/6x11.png*/
+    if (gr_font->cwidth == 6 && gr_font->cheight == 11) {
+        gr_font_space = FONT_SPACE_SML;
+        gr_chars_max = MAX_CHARS_SML;
+    } else {
+        gr_font_space = FONT_SPACE;
+        gr_chars_max = MAX_CHARS;
+
     }
 }
 

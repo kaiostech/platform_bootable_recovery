@@ -24,9 +24,14 @@
 //
 // Graphics.
 //
-
 #define FONT_SPACE 7
 #define MAX_CHARS 12
+//for 6X11 font
+#define FONT_SPACE_SML 4
+#define MAX_CHARS_SML 22
+
+extern int gr_font_space;
+extern int gr_chars_max;
 
 struct GRSurface {
     int width;
