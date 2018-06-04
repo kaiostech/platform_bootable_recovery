@@ -56,20 +56,20 @@ static char* getScrolltext(const char* str) {
         text_col = (text_col/2);
         int len = strlen(str);
 
-        if(len > MAX_CHARS) {
-            if(str[MAX_CHARS + 1] == ' ') {
+        if(len > gr_chars_max) {
+            if(str[gr_chars_max + 1] == ' ') {
                 scanForward = true;
             }
         }
 
         if(scanForward) {
             for(i = 0; i < len ;i++ ) {
-                if( (str[i] == ' ') && ( i >= (MAX_CHARS + 1))) {
+                if( (str[i] == ' ') && ( i >= (gr_chars_max + 1))) {
                     break;
                 }
             }
         } else {
-            for(i = (MAX_CHARS + 1); i >= 0 ;i-- ) {
+            for(i = (gr_chars_max + 1); i >= 0 ;i-- ) {
                 if( (str[i] == ' ') || (str[i] == '/')) {
                     i++;
                     break;
@@ -452,7 +452,7 @@ void ScreenRecoveryUI::Init() {
 
     gr_font_size(&char_width, &char_height);
     text_rows_ = gr_fb_height() / char_height;
-    text_cols_ = (gr_fb_width() / char_width) + FONT_SPACE;
+    text_cols_ = (gr_fb_width() / char_width) + gr_font_space;
 
     text_ = Alloc2d(text_rows_, text_cols_ + 1);
     file_viewer_text_ = Alloc2d(text_rows_, text_cols_ + 1);

@@ -993,19 +993,25 @@ print_property(const char *key, const char *name, void *cookie) {
 static void
 load_locale_from_cache() {
     FILE* fp = fopen_path(LOCALE_FILE, "r");
-    char buffer[80];
+    char buffer[PROPERTY_VALUE_MAX] = {0};
     if (fp != NULL) {
         fgets(buffer, sizeof(buffer), fp);
+        check_and_fclose(fp, LOCALE_FILE);
+    } else {
+        property_get("ro.product.locale", buffer, "");
+    }
+    if (strlen(buffer) > 0) {
         int j = 0;
         unsigned int i;
-        for (i = 0; i < sizeof(buffer) && buffer[i]; ++i) {
+        for (i = 0; i < PROPERTY_VALUE_MAX && buffer[i]; ++i) {
             if (!isspace(buffer[i])) {
                 buffer[j++] = buffer[i];
             }
         }
         buffer[j] = 0;
         locale = strdup(buffer);
-        check_and_fclose(fp, LOCALE_FILE);
+    } else {
+        locale = "en-US";
     }
 }
 static void fota_reset_status(void) {

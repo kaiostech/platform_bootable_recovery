@@ -377,7 +377,7 @@ static int matches_locale(const char* loc, const char* locale) {
     for (i = 0; loc[i] != 0 && loc[i] != '_'; ++i);
     if (loc[i] == '_') return 0;
 
-    return (strncmp(locale, loc, i) == 0 && locale[i] == '_');
+    return (strncmp(locale, loc, i) == 0 && (locale[i] == '_' || locale[i] == '-'));
 }
 
 int res_create_localized_alpha_surface(const char* name,
