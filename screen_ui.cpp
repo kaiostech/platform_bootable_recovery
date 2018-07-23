@@ -308,24 +308,25 @@ void ScreenRecoveryUI::draw_screen_locked() {
             SetColor(MENU);
             DrawHorizontalRule(&y);
             y += 4;
+            SetColor(MENU);
             for (int i = 0; i < menu_items; ++i) {
                 if (i == menu_sel) {
                     // Draw the highlight bar.
-                    SetColor(IsLongPress() ? MENU_SEL_BG_ACTIVE : MENU_SEL_BG);
-                    gr_fill(0, y - 2, gr_fb_width(), y + char_height + 2);
+                    //SetColor(IsLongPress() ? MENU_SEL_BG_ACTIVE : MENU_SEL_BG);
+                    //gr_fill(0, y - 2, gr_fb_width(), y + char_height + 2);
                     // Bold white text for the selected item.
                     SetColor(MENU_SEL_FG);
 
                     if(scroll_menuitem == false) {
-                        gr_text(4, y, menu_[i], true);
+                        gr_text(4, y, menu_[i], false);
                     } else {
                         //right navigation key
                         if(menuitem_event == Device::kScrollRight) {
-                            gr_text(4, y, scroll_text, true);
+                            gr_text(4, y, scroll_text, false);
                         }
                         //left navigation key
                         else if(menuitem_event == Device::kScrollLeft) {
-                            gr_text(4, y, menu_[i], true);
+                            gr_text(4, y, menu_[i], false);
                         }
                     }
                     SetColor(MENU);
@@ -364,7 +365,7 @@ void ScreenRecoveryUI::update_screen_locked() {
 // Should only be called with updateMutex locked.
 void ScreenRecoveryUI::update_progress_locked() {
     if (show_text || !pagesIdentical) {
-        draw_screen_locked();    // Must redraw the whole screen
+        //draw_screen_locked();    // Must redraw the whole screen
         pagesIdentical = true;
     } else {
         draw_progress_locked();  // Draw only the progress bar and overlays
@@ -513,7 +514,7 @@ void ScreenRecoveryUI::SetBackground(Icon icon) {
     pthread_mutex_lock(&updateMutex);
 
     currentIcon = icon;
-    update_screen_locked();
+    //update_screen_locked();
 
     pthread_mutex_unlock(&updateMutex);
 }
@@ -586,7 +587,7 @@ void ScreenRecoveryUI::Print(const char *fmt, ...) {
             if (*ptr != '\n') text_[text_row_][text_col_++] = *ptr;
         }
         text_[text_row_][text_col_] = '\0';
-        update_screen_locked();
+        //update_screen_locked();
     }
     pthread_mutex_unlock(&updateMutex);
 }
@@ -771,7 +772,7 @@ void ScreenRecoveryUI::ShowText(bool visible) {
     pthread_mutex_lock(&updateMutex);
     show_text = visible;
     if (show_text) show_text_ever = true;
-    update_screen_locked();
+    //update_screen_locked();
     pthread_mutex_unlock(&updateMutex);
 }
 
