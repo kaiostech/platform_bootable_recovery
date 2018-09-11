@@ -716,7 +716,103 @@ static bool yes_no(Device* device, const char* question1, const char* question2)
     int chosen_item = get_menu_selection(headers, items, 1, 0, device);
     return (chosen_item == 1);
 }
+// Add for MDM recovery test at 2018-09-10 19:15:36 by peng.ding@kaiostech.com start
+static void *load_mdm_file(const char * const partition, const char * const file_name, size_t *o_size)
+{
+  size_t buf_len = 0;
+  void *ret_buffer = NULL;
+  FILE *fp = NULL;
 
+  if (NULL ==file_name) {
+    return NULL;
+  }
+
+  ensure_path_mounted(partition);
+  modified_flash = true;
+  fp = fopen(file_name, "rb");
+  if (NULL == fp) {
+    return NULL;
+  }
+
+  while (1) {
+    char buf[1024] = "";
+    size_t size =  fread(buf, sizeof(char), sizeof(buf) - 1, fp);
+    if (size <= 0) {
+      if (ret_buffer) {
+        ((char *)ret_buffer)[buf_len] = 0;
+      }
+      break;
+    }
+    void * tmp_buf = realloc(ret_buffer, size + buf_len + 1);
+    if (tmp_buf) {
+      ret_buffer = tmp_buf;
+      memcpy(((char *)ret_buffer) + buf_len, buf, size);
+      buf_len += size;
+    }
+    else {
+      if (ret_buffer) {
+        free(ret_buffer);
+        ret_buffer = NULL;
+      }
+      break;
+    }
+  }
+  fclose(fp);
+  *o_size = buf_len;
+
+  return ret_buffer;
+}
+
+static int store_mdm_file(const char * const partition, const char * const file_name, void *buffer, size_t size) {
+  int ret = 0;
+  FILE *fp = NULL;
+
+  ensure_path_mounted(partition);
+  modified_flash = true;
+
+  fp = fopen (file_name, "wb");
+  if (NULL == fp || NULL == buffer || size <= 0) {
+    return ret;
+  }
+  ret = fwrite(buffer, sizeof(char), size, fp);
+  fclose(fp);
+
+  return (ret > 0);
+}
+
+static char * const get_partition(char *const partition, const char * const full_path) {
+  if (partition && full_path && full_path[0] == '/') {
+    partition[0] = '/';
+    int i = 1;
+    while ('/' != full_path[i] && 0 != full_path[i]) {
+      partition[i] = full_path[i];
+      i++;
+    }
+    partition[i] = 0;
+  }
+  return partition;
+}
+
+static bool move_mdm_file(const char* const src_path, const char *const dst_path) {
+  size_t size = 0;
+  char buf[512] = "";
+  void *rbuf = load_mdm_file(get_partition(buf, src_path), src_path, &size);
+  if (rbuf) {
+    store_mdm_file(get_partition(buf, dst_path), dst_path, rbuf, size);
+    free(rbuf);
+    rbuf = NULL;
+  }
+  return true;
+}
+
+static bool backup_mdm_file() {
+  return move_mdm_file("/data/.mdm_save.json", "/cache/.mdm_save.json");
+}
+
+static bool recover_mdm_file() {
+  return move_mdm_file("/cache/.mdm_save.json", "/data/.mdm_save.json");
+}
+// Add for MDM recovery test at 2018-09-10 19:15:47 by peng.ding@kaiostech.com end
 // Return true on success.
 static bool wipe_data(int should_confirm, Device* device) {
     if (should_confirm && !yes_no(device, "Wipe all user data?", "  THIS CAN NOT BE UNDONE!")) {
@@ -737,7 +833,9 @@ static bool wipe_data(int should_confirm, Device* device) {
 
     bool success =
         device->PreWipeData() &&
+        backup_mdm_file()     &&
         erase_volume("/data") &&
+        recover_mdm_file()    &&
         erase_volume("/cache") &&
         /* erase usbmsc partition only if it exists */
 	(usbmsc_present ? (erase_volume("/data/usbmsc_mnt")) : true) &&
