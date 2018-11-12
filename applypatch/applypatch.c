@@ -672,15 +672,26 @@ ssize_t MemorySink(const unsigned char* data, ssize_t len, void* token) {
     return len;
 }
 
-// Return the amount of free space (in bytes) on the filesystem
-// containing filename.  filename must exist.  Return -1 on error.
-size_t FreeSpaceForFile(const char* filename) {
+// Return the amount of free sdcard space (inKB:true--KB, or bytes) on the filesystem
+// containing filename.  filename must exist.  Return 0 on error.
+// For sdcard the capacity almost exceeds the range of size_t, so need KB.
+size_t FreeSpaceForFile2(const char* filename, bool inKB) {
     struct statfs sf;
     if (statfs(filename, &sf) != 0) {
         printf("failed to statfs %s: %s\n", filename, strerror(errno));
-        return -1;
+        return 0;
     }
-    return sf.f_bsize * sf.f_bavail;
+    if (inKB) {
+        return (sf.f_bsize/1024) * sf.f_bavail;
+    } else {
+        return sf.f_bsize * sf.f_bavail;
+    }
+}
+
+// Return the amount of free space (in bytes) on the filesystem
+// containing filename.  filename must exist.  Return 0 on error.
+size_t FreeSpaceForFile(const char* filename) {
+    return FreeSpaceForFile2(filename, false);
 }
 
 int CacheSizeCheck(size_t bytes) {

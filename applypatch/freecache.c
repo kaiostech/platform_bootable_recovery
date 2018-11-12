@@ -174,13 +174,14 @@ int MakeFreeSpaceOnCache(size_t bytes_needed) {
 
 try_sdcard:
   if (free_now < bytes_needed) {
-      free_now = FreeSpaceForFile(SDCARD_TEMP_ROOT);
-      printf("%lu bytes free on %s (%ld needed)\n",
+      free_now = FreeSpaceForFile2(SDCARD_TEMP_ROOT, 1);
+      printf("%lu KB free on %s (%ld needed)\n",
              (long)free_now, SDCARD_TEMP_ROOT, (long)bytes_needed);
-      if (free_now >= bytes_needed) {
+      if (free_now >= (bytes_needed/1024)) {
           int result = mkdir(SDCARD_TEMP_DIR, 0755);
           if (result == 0 || errno == EEXIST) {
               cache_temp_source = SDCARD_TEMP_SOURCE;
+              return 0;
           } else {
               printf("mkdir(%s) error: %s\n", SDCARD_TEMP_DIR, strerror(errno));
               free_now = 0;
