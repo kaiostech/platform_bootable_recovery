@@ -465,12 +465,128 @@ typedef struct _saved_log_file {
     struct _saved_log_file* next;
 } saved_log_file;
 
+static const char *DATA_ROOT = "/data";
+static const char *DEVICE_CONFIG_DATA_DIR = "/data/local/.deviceconfig";
+static const char *DEVICE_CONFIG_CACHE_DIR = "/cache/.deviceconfig";
+
+// If we're reformatting /data or /cache, we load any device config
+// ("/data/local/.deviceconfig/*" or "/cache/.deviceconfig/*") into memory,
+// so we can restore them after the reformat.
+saved_log_file* backup_dc_files(const char* volume) {
+    bool is_data = (strcmp(volume, DATA_ROOT) == 0);
+    bool is_cache = (strcmp(volume, CACHE_ROOT) == 0);
+    saved_log_file* head = NULL;
+    char dir_path[PATH_MAX];
+    if (is_data) {
+        strcpy(dir_path, DEVICE_CONFIG_DATA_DIR);
+    } else if (is_cache) {
+        strcpy(dir_path, DEVICE_CONFIG_CACHE_DIR);
+    } else {
+        return NULL;
+    }
+    ensure_path_mounted(volume);
+
+    DIR* d;
+    struct dirent* de;
+    d = opendir(dir_path);
+    if (d) {
+        char path[PATH_MAX];
+        char sub_path[PATH_MAX];
+        strcpy(path, dir_path);
+        strcat(path, "/");
+        int path_len = strlen(path);
+        DIR* sub_d;
+        struct dirent* sub_de;
+        while ((de = readdir(d)) != NULL) {
+            //skip . & ..
+            if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0)
+                continue;
+            strcpy(sub_path, path);
+            strcpy(sub_path+path_len, de->d_name);
+            LOGI("backup_dc_files dir = %s.\n", sub_path);
+            sub_d = opendir(sub_path);
+            strcat(sub_path, "/");
+            int sub_path_len = strlen(sub_path);
+            if (sub_d) {
+                while ((sub_de = readdir(sub_d)) != NULL) {
+                    //skip . & ..
+                    if (strcmp(sub_de->d_name, ".") == 0 || strcmp(sub_de->d_name, "..") == 0)
+                        continue;
+                    saved_log_file* p = (saved_log_file*) malloc(sizeof(saved_log_file));
+                    strcpy(sub_path+sub_path_len, sub_de->d_name);
+                    LOGI("backup_dc_files file = %s.\n", sub_path);
+                    p->name = strdup(sub_path);
+                    if (stat(sub_path, &(p->st)) == 0) {
+                        p->data = (unsigned char*) malloc(p->st.st_size);
+                        if (p->data == NULL && p->st.st_size != 0) {
+                            LOGE("backup_dc_files malloc failed: file = %s.\n", sub_path);
+                            continue;
+                        }
+                        FILE* f = fopen(sub_path, "rb");
+                        fread(p->data, 1, p->st.st_size, f);
+                        fclose(f);
+                        p->next = head;
+                        head = p;
+                    } else {
+                        free(p);
+                    }
+                }
+                closedir(sub_d);
+            } else {
+                if (errno != ENOENT) {
+                    printf("opendir failed: %s\n", strerror(errno));
+                    LOGE("backup_dc_files opendir failed: dir = %s.\n", sub_path);
+                }
+            }
+        }
+        closedir(d);
+    } else {
+        if (errno != ENOENT) {
+            printf("opendir failed: %s\n", strerror(errno));
+            LOGE("backup_dc_files opendir failed: dir = %s.\n", dir_path);
+        }
+    }
+    return head;
+}
+
+void recover_dc_files(const char* volume, saved_log_file* head) {
+    bool is_cache = (strcmp(volume, CACHE_ROOT) == 0);
+    bool is_data = (strcmp(volume, DATA_ROOT) == 0);
+
+    char dir_path[PATH_MAX];
+    if (is_data) {
+        strcpy(dir_path, DEVICE_CONFIG_DATA_DIR);
+    } else if (is_cache) {
+        strcpy(dir_path, DEVICE_CONFIG_CACHE_DIR);
+    } else {
+        return;
+    }
+
+    while (head) {
+        LOGI("recover_dc_files : file = %s.\n", head->name);
+        FILE* f = fopen_path(head->name, "wb");
+        if (f) {
+            fwrite(head->data, 1, head->st.st_size, f);
+            fclose(f);
+            chmod(head->name, head->st.st_mode);
+            chown(head->name, head->st.st_uid, head->st.st_gid);
+        }
+        free(head->name);
+        free(head->data);
+        saved_log_file* temp = head->next;
+        free(head);
+        head = temp;
+    }
+   sync();
+}
+
 static bool erase_volume(const char* volume) {
     bool is_cache = (strcmp(volume, CACHE_ROOT) == 0);
 
     ui->SetBackground(RecoveryUI::ERASING);
     ui->SetProgressType(RecoveryUI::INDETERMINATE);
 
+    saved_log_file* dc_head = backup_dc_files(volume);
     saved_log_file* head = NULL;
 
     if (is_cache) {
@@ -544,6 +660,10 @@ static bool erase_volume(const char* volume) {
         // log.
         tmplog_offset = 0;
         copy_logs();
+    }
+
+    if (dc_head) {
+        recover_dc_files(volume, dc_head);
     }
 
     return (result == 0);
