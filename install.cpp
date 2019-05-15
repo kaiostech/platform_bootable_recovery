@@ -41,16 +41,19 @@ extern RecoveryUI* ui;
 #define ASSUMED_UPDATE_BINARY_NAME  "META-INF/com/google/android/update-binary"
 #define PUBLIC_KEYS_FILE "/res/keys"
 
-#define RECOVERY_FILEMOUNT_FAILURE   3013
-#define RECOVERY_FILEMAP_FAILURE     3014
-#define RECOVERY_KEYLOADED_FAILURE   3015
-#define RECOVERY_BINARY_FAILURE      3016
-#define RECOVERY_PARTITIONWRITE_FAILURE   3017
-#define RECOVERY_FILECREATE_FAILURE  3018
-#define RECOVERY_FILECOPY_FAILURE    3019
-#define RECOVERY_BATTERY_LOW         3020
-#define RECOVERY_ZIPVERIFIED_FAILURE 3021
-#define RECOVERY_ZIPOPENED_FAILURE   3022
+#define RECOVERY_FILEMOUNT_FAILURE      3013
+#define RECOVERY_FILEMAP_FAILURE        3014
+#define RECOVERY_KEYLOADED_FAILURE      3015
+#define RECOVERY_BINARY_FAILURE         3016
+#define RECOVERY_PARTITIONWRITE_FAILURE 3017
+#define RECOVERY_FILECREATE_FAILURE     3018
+#define RECOVERY_FILECOPY_FAILURE       3019
+#define RECOVERY_BATTERY_LOW            3020
+#define RECOVERY_ZIPVERIFIED_FAILURE    3021
+#define RECOVERY_ZIPOPENED_FAILURE      3022
+#define RECOVERY_INSTALLMOUNT_FAILURE   3023
+#define RECOVERY_INSTALLUNMOUNT_FAILURE 3024
+
 
 #define BATTERY_CAPCITY_FILE "/sys/class/power_supply/battery/capacity"
 #define BATTERY_STATUS_FILE  "/sys/class/power_supply/battery/status"
@@ -289,10 +292,15 @@ really_install_package(const char *path, bool* wipe_cache, bool needs_mount, uns
     ui->Print("Opening update package...\n");
 
     if (path && needs_mount) {
+        int ret = 0;
         if (path[0] == '@') {
-            ensure_path_mounted(path+1);
+            ret = ensure_path_mounted(path+1);
         } else {
-            ensure_path_mounted(path);
+            ret = ensure_path_mounted(path);
+        }
+        if (ret != 0) {
+            if (err_no != NULL) *err_no = RECOVERY_FILEMOUNT_FAILURE;
+            return INSTALL_ERROR;
         }
     }
 
@@ -404,11 +412,6 @@ install_package(const char* path, bool* wipe_cache, const char* install_file,
 {
     modified_flash = true;
 
-    if (is_battery_ok() == false) {
-        if (err_no != NULL) *err_no = RECOVERY_BATTERY_LOW;
-        return INSTALL_ERROR;
-    }
-
     FILE* install_log = fopen_path(install_file, "w");
     if (install_log) {
         fputs(path, install_log);
@@ -422,7 +425,9 @@ install_package(const char* path, bool* wipe_cache, const char* install_file,
     }
     if (result != 0) {
         LOGE("failed to set up expected mounts for install; aborting\n");
-        if (err_no != NULL) *err_no = RECOVERY_FILEMOUNT_FAILURE;
+        if (err_no != NULL) {
+            *err_no = (result == -1 ? RECOVERY_INSTALLMOUNT_FAILURE: RECOVERY_INSTALLUNMOUNT_FAILURE);
+        }
         result = INSTALL_ERROR;
     } else {
         result = really_install_package(path, wipe_cache, needs_mount, err_no);

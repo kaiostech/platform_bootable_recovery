@@ -310,7 +310,7 @@ int setup_install_mounts() {
         } else {
             if (ensure_path_unmounted(v->mount_point) != 0) {
                 LOGE("failed to unmount %s\n", v->mount_point);
-                return -1;
+                return -2;
             }
         }
     }
