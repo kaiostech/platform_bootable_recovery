@@ -288,11 +288,67 @@ static int LoadPartitionContents(const char* filename, FileContents* file) {
     if (i == pairs) {
         // Ran off the end of the list of (size,sha1) pairs without
         // finding a match.
-        printf("contents of partition \"%s\" didn't match %s\n",
+        printf("contents of partition \"%s\" didn't match %s,try the cached file\n",
                partition, filename);
-        free(file->data);
-        file->data = NULL;
-        return -1;
+        // Here we should try to load save data
+        dev = fopen(CACHE_TEMP_SOURCE, "rb");
+        if (dev == NULL) {
+          dev = fopen(SDCARD_TEMP_SOURCE, "rb");
+          if (dev == NULL) {
+            printf("failed to open emmc partition \"%s\": %s\n",
+                     partition, strerror(errno));
+            free(file->data);
+            file->data = NULL;
+            return -1;
+          }
+        }
+        SHA_init(&sha_ctx);
+        file->size = 0;
+        size_t next = size[0] - file->size;
+        size_t read = 0;
+        p = (char*)file->data;
+        if (next > 0) {
+          read = fread(p, 1, next, dev);
+          if (read != next) {
+            printf("short read (%zu bytes of %zu) for partition cache file \"%s\"\n",
+                       file->size, size[0], partition);
+            fclose(dev);
+            free(file->data);
+            file->data = NULL;
+            return -1;
+          }
+          SHA_update(&sha_ctx, p, read);
+          file->size += read;
+        } else {
+            fclose(dev);
+            free(file->data);
+            file->data = NULL;
+            return -1;
+        }
+
+        SHA_CTX temp_ctx;
+        memcpy(&temp_ctx, &sha_ctx, sizeof(SHA_CTX));
+        const uint8_t* temp_sha = SHA_final(&temp_ctx);
+
+        if (ParseSha1(sha1sum[0], parsed_sha) != 0) {
+            printf("failed to parse sha1 %s in %s\n",
+                   sha1sum[0], filename);
+            fclose(dev);
+            free(file->data);
+            file->data = NULL;
+            return -1;
+        }
+
+        if (memcmp(temp_sha, parsed_sha, SHA_DIGEST_SIZE) == 0) {
+            printf("partition cache file read matched size %zu sha %s\n",
+                   size[0], sha1sum[0]);
+            fclose(dev);
+        } else {
+            fclose(dev);
+            free(file->data);
+            file->data = NULL;
+            return -1;
+        }
     }
 
     const uint8_t* sha_final = SHA_final(&sha_ctx);
